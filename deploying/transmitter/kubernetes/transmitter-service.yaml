@@ -6,14 +6,10 @@ metadata:
     app: antenna-transmitter
 spec:
   selector:
-    app: dune-transmitter
+    app: antenna-transmitter
   ports:
-  - name: port-9042
-    port: 9042
-    targetPort: 9042
-    protocol: TCP
-  - name: port-9044
-    port: 9044
-    targetPort: 9044
-    protocol: TCP
+    - name: port-9044
+      port: 9044
+      targetPort: 9044
+      protocol: TCP
   type: ClusterIP

@@ -18,6 +18,14 @@ keystores:
     key:
       - label: jwtsigner
         content: "@keys/jwtsigner.key"
+  - name: rt_profile_keys
+    type: pem
+    certificate:
+      - label: pgsql_ca
+        content: "@keys/pgsql_ca.pem"
+      - label: kafka_ca
+        content: "@keys/kafka_ca.pem"
+
 
 server_connections: 
   - name: sqlitefile
@@ -26,16 +34,47 @@ server_connections:
     hosts:
       - hostname: "file:///db/ssf.db?cache=shared"
         hostport: 0
+  - name: pgsql
+    type: postgresql
+    database_name: antenna
+    hosts:
+      - hostname: antenna-postgres
+        hostport: 5432
+    credential:
+      username: "@secrets/pgsql_user"
+      password: "@secrets/pgsql_password"
+    conn_settings:
+      min_pool_size: 5
+      max_pool_size: 50
+      max_idle_time: 10
+      connect_timeout: 5
+      aged_timeout: 30
+    ssl:
+      certificate:
+        - ks:rt_profile_keys/pgsql_ca
+  - name: kafka
+    type: kafka
+    hosts:
+      - hostname: antenna-kafka
+        hostport: 9092
+    ssl:
+      certificate:
+        - ks:rt_profile_keys/kafka_ca
+    credential:
+      sasl:
+        mechanism: PLAIN
+        username: "@secrets/kafka_user"
+        password: "@secrets/kafka_password"
 
 databases:
   config:
-    server: sqlitefile
+    server: pgsql
   raw_2_ssf:
-    server: sqlitefile
+    server: kafka
     partitions: 1
   ssf_2_set:
     server: sqlitefile
     partitions: 1
   poll_stage:
-    server: sqlitefile
+    server: pgsql
     retention_time_in_days: 4

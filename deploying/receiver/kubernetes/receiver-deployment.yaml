@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: antenna-receiver
+  labels:
+    app: antenna-receiver
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: antenna-receiver
+  template:
+    metadata:
+      labels:
+        app: antenna-receiver
+    spec:
+      hostname: antenna-receiver
+      containers:
+        - name: antenna-receiver
+          image: icr.io/ibm-verify/ibm-verify-antenna-receiver:25.12.0
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 9043
+          volumeMounts:
+            - name: all-configs
+              mountPath: /var/antenna/config
+#          env:
+#            - name: SSL_CERT_FILE
+#              value: /var/antenna/config/keys/ca-bundle.pem
+      volumes:
+        - name: keys
+          secret:
+            secretName: receiver-keys
+        - name: all-configs
+          projected:
+            sources:
+              - configMap:
+                  name: receiver-config
+              - configMap:
+                  name: receiver-action-handlers
+                  items:
+                    - key: log_event.js
+                      path: js/log_event.js
+              - secret:
+                  name: receiver-keys
+                  items:
+                    - key: server.key
+                      path: keys/server.key
+                    - key: server.pem
+                      path: keys/server.pem
+                    - key: ca-bundle.pem
+                      path: keys/ca-bundle.pem
+              - secret:
+                  name: antenna-postgres-cert
+                  items:
+                    - key: ca.pem
+                      path: keys/pgsql_ca.pem
+              - secret:
+                  name: antenna-postgres-secret
+                  items:
+                    - key: POSTGRES_USER
+                      path: secrets/pgsql_user
+                    - key: POSTGRES_PASSWORD
+                      path: secrets/pgsql_password
+              - secret:
+                  name: antenna-kafka-cert
+                  items:
+                    - key: ca.pem
+                      path: keys/kafka_ca.pem
+              - secret:
+                  name: antenna-kafka-secret
+                  items:
+                    - key: KAFKA_CLIENT_USERS
+                      path: secrets/kafka_user
+                    - key: KAFKA_CLIENT_PASSWORDS
+                      path: secrets/kafka_password

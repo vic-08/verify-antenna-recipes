@@ -1,0 +1,4 @@
+security.protocol=SASL_SSL
+bootstrap.servers=antenna-kafka:9092
+sasl.mechanism=PLAIN
+ssl.truststore.location=/etc/kafka/secrets/truststore.jks

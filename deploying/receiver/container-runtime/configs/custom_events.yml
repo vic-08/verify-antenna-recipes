@@ -1,0 +1,31 @@
+---
+version: 1.0.0
+custom_event_types:
+  - event_uri: https://iam.ibm.com/secevent/ssf/event-type/application
+    schema: |
+      {
+        "type": "object",
+        "properties": {
+          "appID": {
+            "type": "string",
+            "minLength": 1
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "Created",
+              "Update",
+              "Deleted"
+            ]
+          },
+          "timestamp": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "appID",
+          "operation",
+          "timestamp"
+        ]
+      }

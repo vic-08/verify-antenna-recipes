@@ -1,142 +1,371 @@
-# IBM Verify Antenna Transmitter on Kubernetes
+# IBM Verify Antenna Transmitter Kubernetes Deployment Guide
 
-This document guides you through running an IBM Verify Antenna Transmitter on a Kubernetes cluster.
+This guide walks you through deploying an IBM Verify Antenna Transmitter on a Kubernetes cluster.
 
-## Background
+## Table of Contents
 
-The IBM Verify Antenna Transmitter is designed to ingest raw security events, transform them into SSF-compliant events and transmit them to SSF receivers. Given transformation logic is written in JavaScript, the transformation handlers can be as simple or as complex as needed.
+- [Overview](#overview)
+- [Prerequisites](#prerequisites)
+- [Configuration](#configuration)
+  - [Setting Up the Local Directory](#setting-up-the-local-directory)
+  - [Generating Keys and Certificates](#generating-keys-and-certificates)
+  - [Creating Transformation Handlers](#creating-transformation-handlers)
+  - [Configuring Authorization Scheme](#configuring-authorization-scheme)
+  - [Creating ConfigMaps and Secrets](#creating-configmaps-and-secrets)
+- [Deploying to Kubernetes](#deploying-to-kubernetes)
+- [Verifying the Deployment](#verifying-the-deployment)
+- [Troubleshooting](#troubleshooting)
+
+## Overview
+
+The IBM Verify Antenna Transmitter ingests raw security events, transforms them into SSF-compliant events, and transmits them to SSF receivers.
 
 > 📘 Note
-> 
-> The transformation handlers determine the resource requirements to run Antenna. A very complex handler can impact the processing rate.
-> Simple object-to-object mapping is a common approach. Augmenting events by calling out to external sources is discouraged.
+>
+> Transformation handlers determine Antenna's resource requirements. Complex handlers can impact processing rates.
+> Simple object-to-object mapping is the recommended approach. Avoid augmenting events by calling external sources.
 
 ## Prerequisites
 
-- A Kubernetes cluster
-- An IBM Verify tenant: You can sign up for a free trial at [ibm.biz/verify-trial](https://ibm.biz/verify-trial). This will be referenced in this document and in configuration files as `tenant.verify.ibm.com`.
+### Required Tools
+
+- **kubectl**: Kubernetes command-line tool (v1.20+)
+- **openssl**: For generating SSL/TLS certificates
+
+### Kubernetes Cluster
+
+- **Kubernetes version**: 1.20 or higher
+- **Storage**: Dynamic volume provisioning or pre-created PersistentVolumes
+- **Resources**: Minimum 2 CPU cores and 4GB RAM available
+- **Access**: Cluster admin permissions for creating resources
+
+### IBM Verify Tenant
+
+- Sign up for a free trial at [ibm.biz/verify-trial](https://ibm.biz/verify-trial)
+- This will be referenced as `tenant.verify.ibm.com` in configuration files
+
+### Prerequisites Deployment
+
+- **Datastore**: PostgreSQL and Kafka must be deployed first. Follow the [Datastore Deployment Guide](../datastore/README.md).
 
 ## Configuration
 
-### Setting up the local directory
+### Setting Up the Local Directory
 
 > 📘 Note
-> 
-> You will need to perform these steps only if you choose not to clone this Github repository to your local system.
+>
+> Perform these steps only if you haven't cloned this GitHub repository to your local system.
 
-You will build a directory structure that matches [configs](../container-runtime/configs).
+Build a directory structure matching the [configs](./configs) layout:
 
-Create a directory in your system called `antenna-transmitter` and copy the contents of the [configs](../container-runtime/configs) directory into it. All commands from this point onwards will be executed from the `antenna-transmitter` directory.
+1. Create a directory named `antenna-transmitter` on your system and copy the contents of the [configs](./configs) directory into it. Execute all subsequent commands from within the `antenna-transmitter` directory.
 
-Copy the following files into `antenna-transmitter` directory:
+2. Copy these files into the `antenna-transmitter` directory:
+   - `transmitter-statefulset.yaml`: Kubernetes StatefulSet manifest
+   - `transmitter-service.yaml`: Kubernetes Service manifest
 
-- `transmitter-deployment.yaml`: This is the Kubernetes deployment manifest.
-- `transmitter-service.yaml`: This is the Kubernetes service manifest.
-- `transmitter-pvc.yaml`: This is the persistent volume definition for the SQLite database.
+**Expected Directory Structure:**
 
-### Generate keys and certificates
-
-The first step is to generate SSL keys and certificates for secure communication. You can use OpenSSL to generate the keys and certificates.
-
-Here's an example of how to generate a self-signed certificate using OpenSSL:
-
-```bash
-$ openssl req -x509 -newkey rsa:4096 -keyout configs/keys/server.key -out configs/keys/server.pem -days 365 -nodes -addext "subjectAltName = DNS:<hostname>"
+```
+antenna-transmitter/
+├── configs/
+│   ├── js/
+│   │   └── (transformation handlers)
+│   ├── keys/
+│   │   └── (certificates will be generated here)
+│   ├── storage.yml
+│   └── transmitter.yml
+├── transmitter-service.yaml
+└── transmitter-statefulset.yaml
 ```
 
-This will generate a self-signed certificate with a validity of 365 days under the `keys` directory that are used to run the HTTPS server.
+### Generating Keys and Certificates
 
-You will also need a key-pair to sign the security event tokens. You can use OpenSSL to generate the key-pair as well.
-Here's an example of how to generate a key-pair using OpenSSL:
+Generate SSL keys and certificates for secure communication using OpenSSL.
+
+#### 1. Generate Server Certificate
 
 ```bash
-$ openssl req -x509 -newkey rsa:4096 -keyout configs/keys/jwtsigner.key -out configs/keys/jwtsigner.pem -days 365 -nodes
+$ openssl req -x509 -newkey rsa:4096 -keyout configs/keys/server.key \
+    -out configs/keys/server.pem -days 365 -nodes \
+    -subj "/C=US/ST=State/L=City/O=Organization/OU=Unit/CN=DNS:<hostname>" \
+    -addext "subjectAltName = DNS:<hostname>"
 ```
 
-### Create transformation handlers
+Replace `<hostname>` with your actual hostname.
 
-Transformation handlers process incoming raw events and transform them into the SSF standardized format. You can find the transformation handlers in the `configs/js` directory. There is an example handler provided that transforms a device event received from a mobile device management system (like IBM MaaS360) and converts it into a SSF CAEP event for device compliance changes.
+#### 2. Generate JWT Signing Key Pair
 
-You can add new files under this directory for additional transformation handlers.
+You also need a key pair to sign security event tokens:
 
-#### Configure authorization scheme
+```bash
+$ openssl req -x509 -newkey rsa:4096 -keyout configs/keys/jwtsigner.key \
+    -subj "/C=US/ST=State/L=City/O=Organization/OU=Unit/CN=DNS:<hostname>" \
+    -out configs/keys/jwtsigner.pem -days 365 -nodes
+```
 
-The authorization scheme in [transmitter.yml](configs/transmitter.yml) needs to be populated with valid values. The instructions in this section is based on IBM Verify as the authorization server.
+### Creating Transformation Handlers
 
-1.  Create a new API client in IBM Verify using the instructions provided in the [IBM Verify documentation](https://www.ibm.com/docs/en/security-verify?topic=access-creating-api-clients). You do not need to choose any entitlements.
-    -  Note that the UI currently does not allow you to create an API client without entitlements. So, select any arbitrary entitlement. However, once you save it, edit the API client and remove the entitlement.
-2.  Populate the `transmitter.yml` with the following values:
-    -  `authorization_schemes[].client_id`: The client ID of the API client created in step 1.
-    -  `authorization_schemes[].client_secret`: The client ID of the API client created in step 1.
-    -  `authorization_schemes[].discovery_uri`: Replace the hostname in the URL with the hostname of your IBM Verify tenant.
+Transformation handlers process incoming raw events and convert them into SSF-standardized format. Example handlers are provided in the `configs/js` directory, including one that transforms device events from mobile device management systems (like IBM MaaS360) into SSF CAEP events for device compliance changes.
+
+Add additional transformation handler files to this directory as needed.
+
+### Configuring Authorization Scheme
+
+The authorization scheme in `transmitter.yml` must be populated with valid values. These instructions use IBM Verify as the authorization server.
+
+1. **Create a new API client in IBM Verify** following the [IBM Verify documentation](https://www.ibm.com/docs/en/security-verify?topic=access-creating-api-clients). No entitlements are required.
+   - Note: The UI currently requires selecting an entitlement. Choose any arbitrary entitlement, save the client, then edit and remove the entitlement.
+
+2. **Populate `transmitter.yml` with these values:**
+   - `authorization_schemes[].client_id`: Client ID from step 1
+   - `authorization_schemes[].client_secret`: Client secret from step 1
+   - `authorization_schemes[].discovery_uri`: Replace the hostname with your IBM Verify tenant hostname
 
 > 📘 Note
-> 
-> Any receiver that needs to connect to this transmitter will need to generate an OAuth token generated 
-> by the same IBM Verify tenant.
-> 
-> This implies that any receiver would need to either be issued a long-lived access token or OAuth client credentials
-> (generated as an API client).
+>
+> Receivers connecting to this transmitter must generate OAuth tokens from the same IBM Verify tenant.
+>
+> Receivers require either a long-lived access token or OAuth client credentials (generated as an API client).
 
-### Create configmaps and secrets
+### Creating ConfigMaps and Secrets
 
-Using the files in `configs` directory, you will now create configmaps and secrets. The names are very important because they are referenced in the Kubernetes deployment descriptor.
+Create ConfigMaps and Secrets using files from the `configs` directory. Names are critical as they're referenced in the Kubernetes deployment descriptor.
 
-1. Create the configmap for the YAML configuration files
+1. **Create ConfigMap for YAML configuration files**
 
     ```bash
     $ kubectl create configmap transmitter-config \
             --from-file=./configs/transmitter.yml \
-            --from-file=./configs/storage.yml \
-            --from-file=./configs/processor.yml
+            --from-file=./configs/storage.yml
     ```
 
-2. Create the configmap for the transformation handlers
+2. **Create ConfigMap for transformation handlers**
 
     ```bash
     $ kubectl create configmap transmitter-transform-handlers \
             --from-file=configs/js
     ```
 
-3. Create the secret for the TLS certificates
+3. **Create Secret for TLS certificates**
 
     ```bash
     $ kubectl create secret generic transmitter-keys \
             --from-file=configs/keys
     ```
 
-### Create the Kubernetes deployment
+## Deploying to Kubernetes
 
-1. Create the PVC
-
-    ```bash
-    $ kubectl apply -f transmitter-pvc.yaml
-    ```
-
-2. Create the Kubernetes deployment
+1. **Create the Kubernetes StatefulSet**
 
     ```bash
-    $ kubectl apply -f transmitter-deployment.yaml
+    $ kubectl apply -f transmitter-statefulset.yaml
     ```
 
-3. Create the Kubernetes service
+2. **Create the Kubernetes Service**
 
     ```bash
     $ kubectl apply -f transmitter-service.yaml
     ```
 
-### Verify that the transmitter is running
+## Verifying the Deployment
 
-1. Check if the pod is running
+1. **Verify the pod is running**
 
     ```bash
     $ kubectl get pods -l app=antenna-transmitter
     ```
 
-2. Port-forward the service to access the transmitter
-
-    ```bash
-    $ kubectl port-forward service/antenna-transmitter 9042:9042 9044:9044
+    Expected output:
+    ```
+    NAME                     READY   STATUS    RESTARTS   AGE
+    antenna-transmitter-0    1/1     Running   0          2m
     ```
 
-3. Open a browser and verify that you are able to connect to https://{HOSTNAME}:9044/.well-known/ssf-configuration. `{HOSTNAME}` is the hostname of the machine where the transmitter is running.
+2. **Check pod logs**
+
+    ```bash
+    $ kubectl logs -l app=antenna-transmitter --tail=50
+    ```
+
+3. **Port-forward the service for local access**
+
+    ```bash
+    $ kubectl port-forward service/antenna-transmitter 9044:9044
+    ```
+
+4. **Test connectivity** by opening a browser and navigating to `https://localhost:9044/.well-known/ssf-configuration`.
+
+5. **Test database connectivity from transmitter pod**
+
+    ```bash
+    $ kubectl exec antenna-transmitter-0 -- bash -c 'timeout 2 bash -c "</dev/tcp/antenna-postgres/5432" && echo "PostgreSQL is reachable" || echo "Cannot connect to PostgreSQL"'
+    ```
+
+6. **Test Kafka connectivity from transmitter pod**
+
+    ```bash
+    $ kubectl exec antenna-transmitter-0 -- bash -c 'timeout 2 bash -c "</dev/tcp/antenna-kafka/9092" && echo "Kafka is reachable" || echo "Cannot connect to Kafka"'
+    ```
+
+## Troubleshooting
+
+### Transmitter Pod Not Starting
+
+**Symptoms**: Transmitter pod remains in `Pending`, `CrashLoopBackOff`, or `Error` state.
+
+**Solutions**:
+1. Check pod logs for errors:
+   ```bash
+   $ kubectl logs -l app=antenna-transmitter
+   ```
+
+2. Verify all required ConfigMaps and Secrets exist:
+   ```bash
+   $ kubectl get configmap transmitter-config transmitter-transform-handlers
+   $ kubectl get secret transmitter-keys antenna-postgres-secret antenna-kafka-secret
+   ```
+
+3. Check if datastore pods are running:
+   ```bash
+   $ kubectl get pods -l app=antenna-postgres
+   $ kubectl get pods -l app=antenna-kafka
+   ```
+
+4. Verify PersistentVolumeClaim is bound:
+   ```bash
+   $ kubectl get pvc transmitter-db-antenna-transmitter-0
+   ```
+
+### Cannot Connect to PostgreSQL
+
+**Symptoms**: Transmitter logs show database connection errors.
+
+**Solutions**:
+1. Verify PostgreSQL service is accessible:
+   ```bash
+   $ kubectl get svc antenna-postgres
+   ```
+
+2. Check PostgreSQL pod is running and ready:
+   ```bash
+   $ kubectl get pods -l app=antenna-postgres
+   ```
+
+3. Test PostgreSQL connectivity from transmitter pod:
+   ```bash
+   $ kubectl exec antenna-transmitter-0 -- bash -c 'timeout 2 bash -c "</dev/tcp/antenna-postgres/5432" && echo "PostgreSQL is reachable" || echo "Cannot connect to PostgreSQL"'
+   ```
+
+4. Verify PostgreSQL credentials in secrets:
+   ```bash
+   $ kubectl get secret antenna-postgres-secret -o yaml
+   ```
+
+### Cannot Connect to Kafka
+
+**Symptoms**: Transmitter logs show Kafka connection or authentication errors.
+
+**Solutions**:
+1. Verify Kafka service is accessible:
+   ```bash
+   $ kubectl get svc antenna-kafka
+   ```
+
+2. Test Kafka connectivity from transmitter pod:
+   ```bash
+   $ kubectl exec antenna-transmitter-0 -- bash -c 'timeout 2 bash -c "</dev/tcp/antenna-kafka/9092" && echo "Kafka is reachable" || echo "Cannot connect to Kafka"'
+   ```
+
+3. Check Kafka credentials:
+   ```bash
+   $ kubectl get secret antenna-kafka-secret -o yaml
+   ```
+
+4. Verify Kafka topics exist:
+   ```bash
+   $ kubectl exec antenna-kafka-0 -- /usr/bin/kafka-topics \
+       --bootstrap-server antenna-kafka:9092 \
+       --command-config /etc/kafka/clients/client.properties --list
+   ```
+
+### Transformation Handler Errors
+
+**Symptoms**: Events are ingested but transformation fails.
+
+**Solutions**:
+1. Check transmitter logs for JavaScript errors:
+   ```bash
+   $ kubectl logs -l app=antenna-transmitter | grep -i error
+   ```
+
+2. Verify transformation handler files are mounted:
+   ```bash
+   $ kubectl exec antenna-transmitter-0 -- ls -la /var/antenna/config/js/
+   ```
+
+3. Test transformation handler syntax locally before deploying.
+
+4. Check for memory or CPU resource constraints that might affect complex handlers.
+
+### Authorization/Authentication Issues
+
+**Symptoms**: OAuth token validation errors or authorization failures.
+
+**Solutions**:
+1. Verify IBM Verify tenant configuration in transmitter.yml:
+   ```bash
+   $ kubectl get configmap transmitter-config -o yaml
+   ```
+
+2. Test OAuth token generation manually:
+   ```bash
+   $ curl -X POST https://tenant.verify.ibm.com/v1.0/endpoint/default/token \
+       -H "Content-Type: application/x-www-form-urlencoded" \
+       -d "grant_type=client_credentials&client_id=<client_id>&client_secret=<client_secret>"
+   ```
+
+3. Verify API client has correct permissions in IBM Verify.
+
+### Certificate Errors
+
+**Symptoms**: SSL/TLS handshake failures or certificate validation errors.
+
+**Solutions**:
+1. Verify certificate validity:
+   ```bash
+   $ openssl x509 -in configs/keys/server.pem -text -noout
+   $ openssl x509 -in configs/keys/jwtsigner.pem -text -noout
+   ```
+
+2. Check Subject Alternative Names (SAN):
+   ```bash
+   $ openssl x509 -in configs/keys/server.pem -text -noout | grep -A1 "Subject Alternative Name"
+   ```
+
+3. Regenerate certificates if expired or incorrect.
+
+### General Troubleshooting Commands
+
+```bash
+# View all resources
+$ kubectl get all
+
+# Check pod logs
+$ kubectl logs <pod-name> --tail=100 -f
+
+# Check events
+$ kubectl get events --sort-by='.lastTimestamp'
+
+# Describe resource
+$ kubectl describe <resource-type> <resource-name>
+
+# Execute command in pod
+$ kubectl exec -it <pod-name> -- bash
+
+# Port forward for local access
+$ kubectl port-forward service/<service-name> <local-port>:<service-port>
+
+# Check resource usage
+$ kubectl top pods
+$ kubectl top nodes
