@@ -16,6 +16,9 @@ receiver:
   runtime:
     enabled: true
 
+    # The number of worker threads processing the received events.
+    worker_threads: 10
+
     # clean events periodically
     cleaner_interval_in_secs: 60
     event_states_to_clean:

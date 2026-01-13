@@ -71,10 +71,10 @@ databases:
     server: pgsql
   raw_2_ssf:
     server: kafka
-    partitions: 1
+    partitions: 10
   ssf_2_set:
     server: sqlitefile
-    partitions: 1
+    partitions: 10
   poll_stage:
     server: pgsql
     retention_time_in_days: 4

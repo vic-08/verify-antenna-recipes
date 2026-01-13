@@ -23,9 +23,17 @@ transmitter:
       signing_keystore: jwks_keys
       default_signing_key: jwtsigner
     sign_poll_set: true
+    max_ssf_event_worker: 10
+    max_set_push_worker: 15
+    wait_ssf_event_timeout: 5s
+    request_timeout: 20
 
   ingester:
     enabled: true
+
+    # The number of worker threads transforming the raw events to SSF events.
+    worker_threads: 10
+
     sources:
       - id: mdm
         type: http_push
