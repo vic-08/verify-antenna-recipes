@@ -119,20 +119,14 @@ spec:
             - name: kafka-client-conf
               mountPath: /etc/kafka/clients
           env:
+            - name: KAFKA_SSL_KEYSTORE_TYPE
+              value: PEM
             - name: KAFKA_SSL_KEYSTORE_LOCATION
-              value: /etc/kafka/secrets/keystore.p12
-            - name: KAFKA_SSL_KEYSTORE_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: antenna-kafka-cert
-                  key: keystore_password
+              value: /etc/kafka/secrets/keystore.pem
+            - name: KAFKA_SSL_TRUSTSTORE_TYPE
+              value: PEM
             - name: KAFKA_SSL_TRUSTSTORE_LOCATION
-              value: /etc/kafka/secrets/truststore.jks
-            - name: KAFKA_SSL_TRUSTSTORE_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: antenna-kafka-cert
-                  key: truststore_password
+              value: /etc/kafka/secrets/truststore.pem
           envFrom:
             - configMapRef:
                 name: antenna-kafka-env
