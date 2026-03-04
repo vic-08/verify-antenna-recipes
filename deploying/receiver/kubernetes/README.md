@@ -1,56 +1,63 @@
 # IBM Verify Antenna Receiver Kubernetes Deployment Guide
 
-This guide walks you through deploying an IBM Verify Antenna Receiver on Kubernetes to process security events that comply with the OpenID Shared Signals Framework (SSF).
+This guide provides step-by-step instructions for deploying an IBM Verify Antenna Receiver on Kubernetes.
 
 ## Table of Contents
 
 - [Overview](#overview)
 - [Prerequisites](#prerequisites)
-- [Configuration](#configuration)
+  - [Required Tools](#required-tools)
+  - [Kubernetes Cluster](#kubernetes-cluster)
+  - [Prerequisites Deployment](#prerequisites-deployment)
+- [Receiver Configuration](#receiver-configuration)
   - [Setting Up the Local Directory](#setting-up-the-local-directory)
-  - [Generating Keys and Certificates](#generating-keys-and-certificates)
-  - [Creating Action Handlers](#creating-action-handlers)
-  - [Configuring TLS for Transmitter Connections](#configuring-tls-for-transmitter-connections)
-  - [Creating ConfigMaps and Secrets](#creating-configmaps-and-secrets)
-- [Deploying to Kubernetes](#deploying-to-kubernetes)
-- [Verifying the Deployment](#verifying-the-deployment)
+- [Generating Receiver Keys and Certificates](#generating-receiver-keys-and-certificates)
+- [Creating Action Handlers](#creating-action-handlers)
+- [Configuring TLS for Transmitter Connections](#configuring-tls-for-transmitter-connections)
+- [Creating Receiver ConfigMaps and Secrets](#creating-receiver-configmaps-and-secrets)
+- [Deploying Receiver to Kubernetes](#deploying-receiver-to-kubernetes)
+- [Verifying Receiver Deployment](#verifying-receiver-deployment)
 - [Troubleshooting](#troubleshooting)
+  - [Receiver Pod Not Starting](#receiver-pod-not-starting)
+  - [Action Handler Errors](#action-handler-errors)
+  - [Certificate Errors](#certificate-errors)
+  - [General Troubleshooting Commands](#general-troubleshooting-commands)
 
 ## Overview
 
-The IBM Verify Antenna Receiver receives and processes security events from transmitters using the OpenID Shared Signals Framework (SSF). It handles various event types, including session revocation, credential changes, device compliance changes, and custom events.
+The IBM Verify Antenna Receiver receives and processes security events from transmitters using the OpenID Shared Signals Framework (SSF). It supports various event types including session revocation, credential changes, device compliance changes, and custom event types.
 
 ## Prerequisites
 
 ### Required Tools
 
-- **kubectl**: Kubernetes command-line tool (v1.20+)
+- **kubectl**: Kubernetes command‑line tool (version 1.20 or later)
 - **openssl**: For generating SSL/TLS certificates
 
 ### Kubernetes Cluster
 
-- **Kubernetes version**: 1.20 or higher
-- **Resources**: Minimum 2 CPU cores and 4GB RAM available
-- **Access**: Cluster admin permissions for creating resources
+- **Kubernetes version**: 1.20 or later
+- **Resources**: Minimum of 4 CPU cores and 8 GB RAM
+- **Access**: Cluster administrator permissions required for creating resources
 
 ### Prerequisites Deployment
 
-- **Datastore**: PostgreSQL and Kafka must be deployed first. Follow the [Datastore Deployment Guide](../datastore/README.md).
-- **Transmitter**: The transmitter should be deployed and configured. Follow the [Transmitter Deployment Guide](../transmitter/README.md).
+- **Datastore**: PostgreSQL and Kafka must be deployed first. Follow the [Datastore Deployment Guide](../datastore/kubernetes/README.md).
+- **Transmitter**: The transmitter should be deployed and configured. Follow the [Transmitter Deployment Guide](../transmitter/kubernetes/README.md).
 
-## Configuration
+## Receiver Configuration
 
 ### Setting Up the Local Directory
 
-> 📘 Note
+> 📘 **Note**
 >
-> Perform these steps only if you haven't cloned this GitHub repository to your local system.
+> Skip this section if you already cloned the GitHub repository.
 
-Build a directory structure matching the [configs](./configs) layout:
+Create a directory structure that matches the receiver layout:
 
-1. Create a directory named `antenna-receiver` on your system and copy the contents of the [configs](./configs) directory into it. Execute all subsequent commands from within the `antenna-receiver` directory.
+1. Create a directory named `antenna-receiver` and copy the `deploying/receiver/container-runtime/configs` folder into it. All subsequent commands must be executed from the `antenna-receiver` directory.
 
-2. Copy these files into the `antenna-receiver` directory:
+2. Copy the following files from `deploying/receiver/kubernetes` into the `antenna-receiver` directory:
    - `receiver-deployment.yaml`: Kubernetes Deployment manifest
    - `receiver-service.yaml`: Kubernetes Service manifest
 
@@ -70,9 +77,9 @@ antenna-receiver/
 └── receiver-service.yaml
 ```
 
-### Generating Keys and Certificates
+## Generating Receiver Keys and Certificates
 
-Generate SSL keys and certificates for secure communication using OpenSSL.
+Generate SSL/TLS keys and certificates for secure communication using OpenSSL.
 
 ```bash
 $ openssl req -x509 \
@@ -85,25 +92,25 @@ $ openssl req -x509 \
         -addext "subjectAltName = DNS:<hostname>"
 ```
 
-Replace `<hostname>` with your actual hostname.
+Replace `<hostname>` with your actual hostname, or use `antenna-receiver` for internal cluster communication.
 
-### Creating Action Handlers
+## Creating Action Handlers
 
-Action handlers process different event types and perform specific actions based on event data. A sample action handler that logs event details to standard output is provided at `log_event.js` in the `configs/js` directory.
+Action handlers process different event types and execute specific actions based on event data. A sample action handler that logs event details to standard output is provided in `log_event.js` within the `configs/js` directory.
 
-Add additional action handler files to this directory as needed.
+Add custom action handler files to this directory as required for your use case.
 
-### Configuring TLS for Transmitter Connections
+## Configuring TLS for Transmitter Connections
 
-If connecting this receiver to a transmitter using a non-standard CA certificate or self-signed certificate, follow these steps:
+If the Receiver must connect to a Transmitter that uses a non-standard or self‑signed CA certificate, complete the following steps:
 
-1. **Obtain the transmitter's public certificate** by accessing the `/.well-known/ssf-configuration` endpoint and exporting the certificate.
+1. **Obtain the transmitter's public certificate** by accessing the transmitter's `/.well-known/ssf-configuration` endpoint and exporting the certificate.
 
 2. **Create a `ca-bundle.pem` file** in the `configs/keys` directory.
 
-3. **Copy the public certificate** into the `ca-bundle.pem` file.
+3. **Add the public certificate** to the `ca-bundle.pem` file.
 
-4. **Uncomment lines 27–29 in `receiver-deployment.yaml`** to override the CA bundle used by the receiver (remove the `#` prefix):
+4. **Uncomment lines 27–29 in `receiver-deployment.yaml`** to configure the receiver to use the custom CA bundle (remove the `#` prefix from each line):
 
     ```yaml
         env:
@@ -111,7 +118,7 @@ If connecting this receiver to a transmitter using a non-standard CA certificate
             value: /var/antenna/config/keys/ca-bundle.pem
     ```
 
-### Creating ConfigMaps and Secrets
+## Creating Receiver ConfigMaps and Secrets
 
 1. **Create ConfigMap for YAML configuration files**
 
@@ -129,14 +136,21 @@ If connecting this receiver to a transmitter using a non-standard CA certificate
             --from-file=configs/js
     ```
 
-3. **Create Secret for TLS certificates**
+3. **Create Secret for SSL/TLS certificates**
 
     ```bash
     $ kubectl create secret generic receiver-keys \
             --from-file=configs/keys
     ```
 
-## Deploying to Kubernetes
+## Deploying Receiver to Kubernetes
+
+> 📘 **Scaling Receiver Pods**
+>
+> To deploy multiple receiver pods for increased throughput:
+> 1. Update the `replicas` field (line 8) in `receiver-deployment.yaml` to the desired pod count
+> 2. Adjust the `worker_threads` configuration (line 20) in `receiver.yml` as needed
+> 3. Ensure the Kafka topic partition count for `antenna.ssf_2_action.event.queue` matches: `replicas × worker_threads` (refer to the "Creating Kafka Topics" section)
 
 1. **Create the Kubernetes Deployment**
 
@@ -150,7 +164,7 @@ If connecting this receiver to a transmitter using a non-standard CA certificate
     $ kubectl apply -f receiver-service.yaml
     ```
 
-## Verifying the Deployment
+## Verifying Receiver Deployment
 
 1. **Verify the pod is running**
 
@@ -164,7 +178,7 @@ If connecting this receiver to a transmitter using a non-standard CA certificate
     antenna-receiver-xxxxxxxxxx-xxxxx   1/1     Running   0          2m
     ```
 
-2. **Check pod logs**
+2. **Check pod logs for errors**
 
     ```bash
     $ kubectl logs -l app=antenna-receiver --tail=50
@@ -176,9 +190,9 @@ If connecting this receiver to a transmitter using a non-standard CA certificate
     $ kubectl port-forward service/antenna-receiver 9043:9043
     ```
 
-4. **Test connectivity** by opening a browser and navigating to `https://localhost:9043/mgmt/v1.0/receivers/config`.
+4. **Test connectivity** by opening a web browser and navigating to `https://localhost:9043/mgmt/v1.0/receivers/config`.
 
-5. **Test database connectivity from receiver pod**
+5. **Test PostgreSQL connectivity from receiver pod**
 
     ```bash
     $ kubectl exec <receiver-pod-name> -- bash -c 'timeout 2 bash -c "</dev/tcp/antenna-postgres/5432" && echo "PostgreSQL is reachable" || echo "Cannot connect to PostgreSQL"'
@@ -197,6 +211,7 @@ If connecting this receiver to a transmitter using a non-standard CA certificate
 **Symptoms**: Receiver pod remains in `Pending`, `CrashLoopBackOff`, or `Error` state.
 
 **Solutions**:
+
 1. Check pod logs for errors:
    ```bash
    $ kubectl logs -l app=antenna-receiver
@@ -208,92 +223,42 @@ If connecting this receiver to a transmitter using a non-standard CA certificate
    $ kubectl get secret receiver-keys antenna-postgres-secret antenna-kafka-secret
    ```
 
-3. Check if datastore pods are running:
+3. Verify the datastore pods are running:
    ```bash
    $ kubectl get pods -l app=antenna-postgres
    $ kubectl get pods -l app=antenna-kafka
    ```
 
-### Cannot Connect to PostgreSQL
-
-**Symptoms**: Receiver logs show database connection errors.
-
-**Solutions**:
-1. Verify PostgreSQL service is accessible:
-   ```bash
-   $ kubectl get svc antenna-postgres
-   ```
-
-2. Check PostgreSQL pod is running and ready:
-   ```bash
-   $ kubectl get pods -l app=antenna-postgres
-   ```
-
-3. Test PostgreSQL connectivity from receiver pod:
-   ```bash
-   $ kubectl exec <receiver-pod-name> -- bash -c 'timeout 2 bash -c "</dev/tcp/antenna-postgres/5432" && echo "PostgreSQL is reachable" || echo "Cannot connect to PostgreSQL"'
-   ```
-
-4. Verify PostgreSQL credentials in secrets:
-   ```bash
-   $ kubectl get secret antenna-postgres-secret -o yaml
-   ```
-
-### Cannot Connect to Kafka
-
-**Symptoms**: Receiver logs show Kafka connection or authentication errors.
-
-**Solutions**:
-1. Verify Kafka service is accessible:
-   ```bash
-   $ kubectl get svc antenna-kafka
-   ```
-
-2. Test Kafka connectivity from receiver pod:
-   ```bash
-   $ kubectl exec <receiver-pod-name> -- bash -c 'timeout 2 bash -c "</dev/tcp/antenna-kafka/9092" && echo "Kafka is reachable" || echo "Cannot connect to Kafka"'
-   ```
-
-3. Check Kafka credentials:
-   ```bash
-   $ kubectl get secret antenna-kafka-secret -o yaml
-   ```
-
-4. Verify Kafka topics exist:
-   ```bash
-   $ kubectl exec antenna-kafka-0 -- /usr/bin/kafka-topics \
-       --bootstrap-server antenna-kafka:9092 \
-       --command-config /etc/kafka/clients/client.properties --list
-   ```
-
 ### Action Handler Errors
 
-**Symptoms**: Events are received but not processed correctly.
+**Symptoms**: Events are received successfully but action processing fails.
 
 **Solutions**:
+
 1. Check receiver logs for JavaScript errors:
    ```bash
    $ kubectl logs -l app=antenna-receiver | grep -i error
    ```
 
-2. Verify action handler files are mounted:
+2. Verify action handler files are properly mounted:
    ```bash
    $ kubectl exec <receiver-pod-name> -- ls -la /var/antenna/config/js/
    ```
 
-3. Test action handler syntax locally before deploying.
+3. Validate action handler syntax locally before deploying to the cluster.
 
 ### Certificate Errors
 
 **Symptoms**: SSL/TLS handshake failures or certificate validation errors.
 
 **Solutions**:
-1. Verify certificate validity:
+
+1. Verify certificate validity and expiration:
    ```bash
    $ openssl x509 -in configs/keys/server.pem -text -noout
    ```
 
-2. Check Subject Alternative Names (SAN):
+2. Verify Subject Alternative Names (SAN) are correct:
    ```bash
    $ openssl x509 -in configs/keys/server.pem -text -noout | grep -A1 "Subject Alternative Name"
    ```
@@ -308,7 +273,7 @@ If connecting this receiver to a transmitter using a non-standard CA certificate
    $ kubectl exec <receiver-pod-name> -- env | grep SSL_CERT_FILE
    ```
 
-5. Regenerate certificates if expired or incorrect.
+5. Regenerate certificates if they are expired or contain incorrect information.
 
 ### General Troubleshooting Commands
 
@@ -334,3 +299,5 @@ $ kubectl port-forward service/<service-name> <local-port>:<service-port>
 # Check resource usage
 $ kubectl top pods
 $ kubectl top nodes
+
+```

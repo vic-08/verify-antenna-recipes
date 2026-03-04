@@ -1,19 +1,32 @@
 # IBM Verify Antenna Datastore Kubernetes Deployment Guide
 
-This guide walks you through deploying the datastore components (PostgreSQL and Kafka) required for IBM Verify Antenna on a Kubernetes cluster.
+This guide provides step-by-step instructions for deploying the datastore components (PostgreSQL and Kafka) required for IBM Verify Antenna on Kubernetes.
 
 ## Table of Contents
 
 - [Overview](#overview)
 - [Prerequisites](#prerequisites)
-- [Configuration](#configuration)
+  - [Required Tools](#required-tools)
+  - [Kubernetes Cluster](#kubernetes-cluster)
+- [Datastore Configuration](#datastore-configuration)
   - [Setting Up the Local Directory](#setting-up-the-local-directory)
-  - [Generating Keys and Certificates](#generating-keys-and-certificates)
-  - [Creating ConfigMaps and Secrets](#creating-configmaps-and-secrets)
-- [Deploying to Kubernetes](#deploying-to-kubernetes)
-- [Verifying the Deployment](#verifying-the-deployment)
+- [Generating Datastore Keys and Certificates](#generating-datastore-keys-and-certificates)
+  - [1. Generate CA Key and Certificate](#1-generate-ca-key-and-certificate)
+  - [2. Generate PostgreSQL SSL Certificate](#2-generate-postgresql-ssl-certificate)
+  - [3. Generate Kafka SSL Certificate](#3-generate-kafka-ssl-certificate)
+  - [4. Create Kafka PEM Keystore and Truststore](#4-create-kafka-pem-keystore-and-truststore)
+- [Creating Datastore ConfigMaps and Secrets](#creating-datastore-configmaps-and-secrets)
+  - [PostgreSQL ConfigMaps and Secrets](#postgresql-configmaps-and-secrets)
+  - [Kafka ConfigMaps and Secrets](#kafka-configmaps-and-secrets)
+- [Deploying Datastore to Kubernetes](#deploying-datastore-to-kubernetes)
+- [Verifying Datastore Deployment](#verifying-datastore-deployment)
 - [Creating Kafka Topics](#creating-kafka-topics)
 - [Troubleshooting](#troubleshooting)
+  - [PostgreSQL Pod Not Starting](#postgresql-pod-not-starting)
+  - [Kafka Pod Not Starting](#kafka-pod-not-starting)
+  - [Cannot Create Kafka Topics](#cannot-create-kafka-topics)
+  - [Certificate Errors](#certificate-errors)
+  - [General Troubleshooting Commands](#general-troubleshooting-commands)
 
 ## Overview
 
@@ -23,30 +36,30 @@ The datastore includes PostgreSQL database and Kafka message broker servers requ
 
 ### Required Tools
 
-- **kubectl**: Kubernetes command-line tool (v1.20+)
+- **kubectl**: Kubernetes command‑line tool (version 1.20 or later)
 - **openssl**: For generating SSL/TLS certificates
-- **keytool**: Java keytool for creating Kafka keystores (part of JDK)
+- **keytool**: Java keytool for creating Kafka keystores (included with JDK)
 
 ### Kubernetes Cluster
 
-- **Kubernetes version**: 1.20 or higher
-- **Storage**: Dynamic volume provisioning or pre-created PersistentVolumes
-- **Resources**: Minimum 2 CPU cores and 4GB RAM available
-- **Access**: Cluster admin permissions for creating resources
+- **Kubernetes version**: 1.20 or later
+- **Storage**: Dynamic volume provisioning enabled or pre-created PersistentVolumes
+- **Resources**: Minimum of 4 CPU cores and 8 GB RAM
+- **Access**: Cluster administrator permissions required for creating resources
 
-## Configuration
+## Datastore Configuration
 
 ### Setting Up the Local Directory
 
-> 📘 Note
+> 📘 **Note**
 >
-> Perform these steps only if you haven't cloned this GitHub repository to your local system.
+> Skip this section if you already cloned the GitHub repository.
 
-Build a directory structure matching the [configs](./configs) layout:
+Create a directory structure that matches the datastore layout:
 
-1. Create a directory named `antenna-datastore` on your system and copy the contents of the [configs](./configs) directory into it. Execute all subsequent commands from within the `antenna-datastore` directory.
+1. Create a directory named `antenna-datastore` and copy the `deploying/datastore/container-runtime/configs` folder into it. All subsequent commands must be executed from the `antenna-datastore` directory.
 
-2. Copy these files into the `antenna-datastore` directory:
+2. Copy the following files from `deploying/datastore/kubernetes` into the `antenna-datastore` directory:
    - `datastore-statefulset.yaml`: Kubernetes StatefulSet manifest
    - `datastore-service.yaml`: Kubernetes Service manifest
 
@@ -69,11 +82,11 @@ antenna-datastore/
 └── datastore-statefulset.yaml
 ```
 
-### Generating Keys and Certificates
+## Generating Datastore Keys and Certificates
 
-Generate SSL keys and certificates for secure communication using OpenSSL.
+Generate SSL/TLS keys and certificates for secure communication using OpenSSL.
 
-#### 1. Generate CA Key and Certificate
+### 1. Generate CA Key and Certificate
 
 ```bash
 $ openssl genrsa 4096 > configs/keys/ca.key
@@ -85,7 +98,7 @@ $ openssl req -new -x509 -nodes -days 3650 \
     -subj "/C=US/ST=State/L=City/O=Organization/OU=Unit/CN=CA"
 ```
 
-#### 2. Generate PostgreSQL SSL Certificate
+### 2. Generate PostgreSQL SSL Certificate
 
 ```bash
 $ openssl req -newkey rsa:4096 -sha256 \
@@ -102,7 +115,7 @@ $ openssl x509 -req -days 365 -in configs/keys/postgres.csr \
     -extensions v3_req -extfile configs/san-postgres.cnf
 ```
 
-#### 3. Generate Kafka SSL Certificate
+### 3. Generate Kafka SSL Certificate
 
 ```bash
 $ openssl req -newkey rsa:4096 -sha256 \
@@ -119,7 +132,7 @@ $ openssl x509 -req -days 365 -in configs/keys/kafka.csr \
     -extensions v3_req -extfile configs/san-kafka.cnf
 ```
 
-#### 4. Create Kafka PKCS12 Keystore and JKS Truststore
+### 4. Create Kafka PEM Keystore and Truststore
 
 ```bash
 $ export ANTENNA_KAFKA_P12_PASSWORD=$(tr -dc A-Za-z0-9 < /dev/urandom | head -c 32)
@@ -155,9 +168,9 @@ $ keytool -import -noprompt -v \
     -file configs/keys/ca.pem
 ```
 
-### Creating ConfigMaps and Secrets
+## Creating Datastore ConfigMaps and Secrets
 
-#### PostgreSQL ConfigMaps and Secrets
+### PostgreSQL ConfigMaps and Secrets
 
 1. **Create ConfigMap for PostgreSQL configuration files**
 
@@ -194,7 +207,7 @@ $ keytool -import -noprompt -v \
         --from-file=tls.key=configs/keys/postgres.key
     ```
 
-#### Kafka ConfigMaps and Secrets
+### Kafka ConfigMaps and Secrets
 
 1. **Create ConfigMap for Kafka configuration files**
 
@@ -274,7 +287,7 @@ $ keytool -import -noprompt -v \
         --from-file=client.properties=configs/secrets/kafka-client.properties
     ```
 
-## Deploying to Kubernetes
+## Deploying Datastore to Kubernetes
 
 1. **Create the datastore StatefulSet**
 
@@ -288,7 +301,7 @@ $ keytool -import -noprompt -v \
     $ kubectl apply -f datastore-service.yaml
     ```
 
-## Verifying the Deployment
+## Verifying Datastore Deployment
 
 1. **Verify PostgreSQL pod is running**
 
@@ -354,17 +367,18 @@ $ kubectl exec antenna-kafka-0 -- /usr/bin/kafka-topics \
 **Symptoms**: PostgreSQL pod remains in `Pending` or `CrashLoopBackOff` state.
 
 **Solutions**:
-1. Check pod logs:
+
+1. Check pod logs for errors:
    ```bash
    $ kubectl logs -l app=antenna-postgres
    ```
 
-2. Verify PersistentVolumeClaim is bound:
+2. Verify the PersistentVolumeClaim is bound:
    ```bash
    $ kubectl get pvc
    ```
 
-3. Check certificate permissions:
+3. Check certificate file permissions:
    ```bash
    $ kubectl exec antenna-postgres-0 -- ls -la /var/pg/cert/
    ```
@@ -374,32 +388,34 @@ $ kubectl exec antenna-kafka-0 -- /usr/bin/kafka-topics \
 **Symptoms**: Kafka pod remains in `Pending` or `CrashLoopBackOff` state.
 
 **Solutions**:
-1. Check pod logs:
+
+1. Check pod logs for errors:
    ```bash
    $ kubectl logs -l app=antenna-kafka
    ```
 
-2. Verify keystore passwords are set correctly:
+2. Verify keystore passwords are configured correctly:
    ```bash
    $ kubectl get secret antenna-kafka-cert -o jsonpath='{.data.keystore_password}' | base64 -d
    ```
 
-3. Check if CLUSTER_ID is set:
+3. Verify the CLUSTER_ID is set:
    ```bash
    $ kubectl get configmap antenna-kafka-env -o yaml | grep CLUSTER_ID
    ```
 
 ### Cannot Create Kafka Topics
 
-**Symptoms**: Topic creation command fails with authentication or connection errors.
+**Symptoms**: Topic creation commands fail with authentication or connection errors.
 
 **Solutions**:
-1. Verify Kafka pod is running:
+
+1. Verify the Kafka pod is running:
    ```bash
    $ kubectl get pods -l app=antenna-kafka
    ```
 
-2. Check client configuration exists:
+2. Verify the client configuration file exists:
    ```bash
    $ kubectl exec antenna-kafka-0 -- cat /etc/kafka/clients/client.properties
    ```
@@ -416,18 +432,19 @@ $ kubectl exec antenna-kafka-0 -- /usr/bin/kafka-topics \
 **Symptoms**: SSL/TLS handshake failures or certificate validation errors.
 
 **Solutions**:
-1. Verify certificate validity:
+
+1. Verify certificate validity and expiration:
    ```bash
    $ openssl x509 -in configs/keys/postgres.pem -text -noout
    $ openssl x509 -in configs/keys/kafka.pem -text -noout
    ```
 
-2. Check Subject Alternative Names (SAN):
+2. Verify Subject Alternative Names (SAN) are correct:
    ```bash
    $ openssl x509 -in configs/keys/kafka.pem -text -noout | grep -A1 "Subject Alternative Name"
    ```
 
-3. Regenerate certificates if expired or incorrect.
+3. Regenerate certificates if they are expired or contain incorrect information.
 
 ### General Troubleshooting Commands
 
@@ -450,4 +467,5 @@ $ kubectl exec -it <pod-name> -- bash
 # Check resource usage
 $ kubectl top pods
 $ kubectl top nodes
+
 ```
