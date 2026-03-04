@@ -44,11 +44,11 @@ Follow the instructions in [Container Runtime Deployment](../../../deploying/rec
    - `CLIENT_ID`: The API client ID created in the previous section
    - `CLIENT_SECRET`: The API client secret created in the previous section
 
-### Update the Processor Configuration
+### Update the Receiver Configuration
 
-1. Open `antenna-receiver/configs/processor.yml`.
+1. Open `antenna-receiver/configs/receiver.yml`.
 
-2. Ensure that the `session-revoked` event type is configured under `processor.action_rules`.
+2. Ensure that the `session-revoked` event type is configured under `receiver.runtime.action_rules`.
 
 3. Set the `content` property for this event type to `"@js/session_revoked.js"`.
 

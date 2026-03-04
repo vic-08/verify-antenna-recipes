@@ -46,17 +46,19 @@ Follow the instructions in [Container Runtime Deployment](../../../deploying/rec
    - `CLIENT_ID`: The API client ID created in the previous section
    - `CLIENT_SECRET`: The API client secret created in the previous section
 
-### Update the Processor Configuration
+### Update the Receiver Configuration
 
-1. Open `antenna-receiver/configs/processor.yml`.
+1. Open `antenna-receiver/configs/receiver.yml`.
 
-2. Add or modify the configuration for the risk level change event type:
+2. Add or modify the configuration for the risk level change event type under `receiver.runtime.action_rules`:
 
    ```yaml
-   processor:
-     action_rules:
-       - event_type: "https://schemas.openid.net/secevent/caep/event-type/risk-level-change"
-         content: "@js/session_revoked.js"
+   receiver:
+     runtime:
+       action_rules:
+         - event_type: "https://schemas.openid.net/secevent/caep/event-type/risk-level-change"
+           type: javascript
+           content: "@js/session_revoked.js"
    ```
 
 3. Save the file.
@@ -69,7 +71,7 @@ Follow the remaining instructions in the [Container Runtime Deployment](../../..
 
 To register your receiver with the IBM Verify Identity Protection transmitter:
 
-1. Copy the [create_stream_with_oauth_client.sh](../../../deploying/receiver/scripts/) to your local machine.
+1. Copy the [create_stream_with_oauth_client.sh](../../../deploying/receiver/scripts/create_stream_with_oauth_client.sh) script to your local machine.
 
 2. Modify the script with the following properties:
    ```bash
@@ -115,9 +117,10 @@ After successfully deploying the VIP receiver:
 
 1. Implement an action handler for credential compromise events:
    - Create a new JavaScript file (e.g., `credential_compromise.js`) in the `configs/js` directory
-   - Add the event type to `processor.yml`:
+   - Add the event type to `receiver.yml` under `receiver.runtime.action_rules`:
      ```yaml
      - event_type: "https://schemas.openid.net/secevent/risc/event-type/credential-compromise"
+       type: javascript
        content: "@js/credential_compromise.js"
      ```
    - Implement appropriate actions for credential compromise events, such as:
