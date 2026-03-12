@@ -38,7 +38,7 @@ The datastore includes PostgreSQL database and Kafka message broker servers requ
 
 - **kubectl**: Kubernetes command‑line tool (version 1.20 or later)
 - **openssl**: For generating SSL/TLS certificates
-- **keytool**: Java keytool for creating Kafka keystores (included with JDK)
+- **git**: For cloning the deployment repository (optional)
 
 ### Kubernetes Cluster
 
@@ -82,11 +82,11 @@ antenna-datastore/
 └── datastore-statefulset.yaml
 ```
 
-## Generating Datastore Keys and Certificates
+### Generating Datastore Keys and Certificates
 
-Generate SSL/TLS keys and certificates for secure communication using OpenSSL.
+Generate SSL/TLS keys and certificates for secure communication between components using OpenSSL.
 
-### 1. Generate CA Key and Certificate
+#### 1. Generate CA Key and Certificate
 
 ```bash
 $ openssl genrsa 4096 > configs/keys/ca.key
@@ -98,7 +98,7 @@ $ openssl req -new -x509 -nodes -days 3650 \
     -subj "/C=US/ST=State/L=City/O=Organization/OU=Unit/CN=CA"
 ```
 
-### 2. Generate PostgreSQL SSL Certificate
+#### 2. Generate PostgreSQL SSL Certificate
 
 ```bash
 $ openssl req -newkey rsa:4096 -sha256 \
@@ -115,7 +115,7 @@ $ openssl x509 -req -days 365 -in configs/keys/postgres.csr \
     -extensions v3_req -extfile configs/san-postgres.cnf
 ```
 
-### 3. Generate Kafka SSL Certificate
+#### 3. Generate Kafka SSL Certificate
 
 ```bash
 $ openssl req -newkey rsa:4096 -sha256 \
@@ -132,45 +132,26 @@ $ openssl x509 -req -days 365 -in configs/keys/kafka.csr \
     -extensions v3_req -extfile configs/san-kafka.cnf
 ```
 
-### 4. Create Kafka PEM Keystore and Truststore
+#### 4. Create Kafka PEM Keystore and Truststore
+
+Create the PEM keystore by combining kafka.key, kafka.pem, and ca.pem:
 
 ```bash
-$ export ANTENNA_KAFKA_P12_PASSWORD=$(tr -dc A-Za-z0-9 < /dev/urandom | head -c 32)
+$ cat configs/keys/kafka.key \
+    configs/keys/kafka.pem \
+    configs/keys/ca.pem > configs/keys/keystore.pem
 ```
+
+Create the PEM truststore by combining kafka.pem and ca.pem:
 
 ```bash
-$ openssl pkcs12 -export \
-    -inkey configs/keys/kafka.key \
-    -in configs/keys/kafka.pem \
-    -out configs/keys/kafka.p12 \
-    -name kafka \
-    -password pass:${ANTENNA_KAFKA_P12_PASSWORD}
+$ cat configs/keys/kafka.pem \
+    configs/keys/ca.pem > configs/keys/truststore.pem
 ```
 
-```bash
-$ export ANTENNA_KAFKA_JKS_PASSWORD=$(tr -dc A-Za-z0-9 < /dev/urandom | head -c 32)
-```
+### Creating Datastore ConfigMaps and Secrets
 
-```bash
-$ keytool -importkeystore -noprompt -v \
-    -srcstorepass ${ANTENNA_KAFKA_P12_PASSWORD} \
-    -deststorepass ${ANTENNA_KAFKA_JKS_PASSWORD} \
-    -srckeystore configs/keys/kafka.p12 \
-    -destkeystore configs/keys/kafka.jks \
-    -srcstoretype PKCS12
-```
-
-```bash
-$ keytool -import -noprompt -v \
-    -trustcacerts -alias ca \
-    -deststorepass ${ANTENNA_KAFKA_JKS_PASSWORD} \
-    -keystore configs/keys/kafka.jks \
-    -file configs/keys/ca.pem
-```
-
-## Creating Datastore ConfigMaps and Secrets
-
-### PostgreSQL ConfigMaps and Secrets
+#### PostgreSQL ConfigMaps and Secrets
 
 1. **Create ConfigMap for PostgreSQL configuration files**
 
@@ -198,7 +179,7 @@ $ keytool -import -noprompt -v \
         --from-literal=POSTGRES_PASSWORD=$(tr -dc A-Za-z0-9 < /dev/urandom | head -c 32)
     ```
 
-4. **Create Secret for PostgreSQL SSL certificates**
+4. **Create Secret for PostgreSQL SSL/TLS certificates**
 
     ```bash
     $ kubectl create secret generic antenna-postgres-cert \
@@ -207,7 +188,7 @@ $ keytool -import -noprompt -v \
         --from-file=tls.key=configs/keys/postgres.key
     ```
 
-### Kafka ConfigMaps and Secrets
+#### Kafka ConfigMaps and Secrets
 
 1. **Create ConfigMap for Kafka configuration files**
 
@@ -255,17 +236,15 @@ $ keytool -import -noprompt -v \
         --from-literal=KAFKA_CONTROLLER_PASSWORD=$(tr -dc A-Za-z0-9 < /dev/urandom | head -c 32)
     ```
 
-4. **Create Secret for Kafka SSL certificates**
+4. **Create Secret for Kafka SSL/TLS certificates**
 
     ```bash
     $ kubectl create secret generic antenna-kafka-cert \
         --from-file=ca.pem=configs/keys/ca.pem \
         --from-file=tls.pem=configs/keys/kafka.pem \
         --from-file=tls.key=configs/keys/kafka.key \
-        --from-file=keystore.p12=configs/keys/kafka.p12 \
-        --from-file=truststore.jks=configs/keys/kafka.jks \
-        --from-literal=keystore_password=${ANTENNA_KAFKA_P12_PASSWORD} \
-        --from-literal=truststore_password=${ANTENNA_KAFKA_JKS_PASSWORD}
+        --from-file=keystore.pem=configs/keys/keystore.pem \
+        --from-file=truststore.pem=configs/keys/truststore.pem
     ```
 
 5. **Create Secret for Kafka client configuration**
@@ -279,23 +258,19 @@ $ keytool -import -noprompt -v \
     ```
 
     ```bash
-    $ echo ssl.truststore.password=${ANTENNA_KAFKA_JKS_PASSWORD} >> configs/secrets/kafka-client.properties
-    ```
-
-    ```bash
     $ kubectl create secret generic antenna-kafka-client-config \
         --from-file=client.properties=configs/secrets/kafka-client.properties
     ```
 
 ## Deploying Datastore to Kubernetes
 
-1. **Create the datastore StatefulSet**
+1. **Create the Kubernetes StatefulSet**
 
     ```bash
     $ kubectl apply -f datastore-statefulset.yaml
     ```
 
-2. **Create the datastore Service**
+2. **Create the Kubernetes Service**
 
     ```bash
     $ kubectl apply -f datastore-service.yaml
@@ -303,7 +278,7 @@ $ keytool -import -noprompt -v \
 
 ## Verifying Datastore Deployment
 
-1. **Verify PostgreSQL pod is running**
+1. **Verify the PostgreSQL pod is running**
 
     ```bash
     $ kubectl get pods -l app=antenna-postgres
@@ -315,7 +290,7 @@ $ keytool -import -noprompt -v \
     antenna-postgres-0   1/1     Running   0          2m
     ```
 
-2. **Verify Kafka pod is running**
+2. **Verify the Kafka pod is running**
 
     ```bash
     $ kubectl get pods -l app=antenna-kafka
@@ -327,7 +302,7 @@ $ keytool -import -noprompt -v \
     antenna-kafka-0    1/1     Running   0          2m
     ```
 
-3. **Check pod logs for any errors**
+3. **Check pod logs for errors**
 
     ```bash
     $ kubectl logs -l app=antenna-postgres --tail=50
@@ -336,14 +311,27 @@ $ keytool -import -noprompt -v \
 
 ## Creating Kafka Topics
 
-Create the required Kafka topics for event processing:
+Create Kafka topics based on the components to be deployed:
+
+- **antenna.raw_2_ssf.event.queue** - Required by Transmitter (can be skipped if Transmitter will not be deployed)
+- **antenna.ssf_2_action.event.queue** - Required by Receiver (can be skipped if Receiver will not be deployed)
+
+> 📘 **Scaling Considerations**
+>
+> **Transmitter scaling**: The partition count for `antenna.raw_2_ssf.event.queue` must equal the number of transmitter pods multiplied by the `worker_threads` configuration value in `transmitter.yml` (line 35). For example, with 3 transmitter pods and 10 worker threads each, set partitions to 30.
+>
+> **Receiver scaling**: The partition count for `antenna.ssf_2_action.event.queue` must equal the number of receiver pods multiplied by the `worker_threads` configuration value in `receiver.yml` (line 20). For example, with 2 receiver pods and 10 worker threads each, set partitions to 20.
+
+**Create Transmitter topic (antenna.raw_2_ssf.event.queue):**
 
 ```bash
 $ kubectl exec antenna-kafka-0 -- /usr/bin/kafka-topics \
     --bootstrap-server antenna-kafka:9092 \
     --command-config /etc/kafka/clients/client.properties \
-    --create --topic antenna.raw_2_ssf.event.queue --partitions 15
+    --create --topic antenna.raw_2_ssf.event.queue --partitions 10
 ```
+
+**Create Receiver topic (antenna.ssf_2_action.event.queue):**
 
 ```bash
 $ kubectl exec antenna-kafka-0 -- /usr/bin/kafka-topics \
@@ -352,7 +340,7 @@ $ kubectl exec antenna-kafka-0 -- /usr/bin/kafka-topics \
     --create --topic antenna.ssf_2_action.event.queue --partitions 10
 ```
 
-**Verify topics were created:**
+**Verify the topics were created:**
 
 ```bash
 $ kubectl exec antenna-kafka-0 -- /usr/bin/kafka-topics \

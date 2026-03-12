@@ -77,7 +77,7 @@ antenna-receiver/
 â””â”€â”€ receiver-service.yaml
 ```
 
-## Generating Receiver Keys and Certificates
+### Generating Receiver Keys and Certificates
 
 Generate SSL/TLS keys and certificates for secure communication using OpenSSL.
 
@@ -94,13 +94,13 @@ $ openssl req -x509 \
 
 Replace `<hostname>` with your actual hostname, or use `antenna-receiver` for internal cluster communication.
 
-## Creating Action Handlers
+### Creating Action Handlers
 
 Action handlers process different event types and execute specific actions based on event data. A sample action handler that logs event details to standard output is provided in `log_event.js` within the `configs/js` directory.
 
 Add custom action handler files to this directory as required for your use case.
 
-## Configuring TLS for Transmitter Connections
+### Configuring TLS for Transmitter Connections
 
 If the Receiver must connect to a Transmitter that uses a non-standard or selfâ€‘signed CA certificate, complete the following steps:
 
@@ -118,7 +118,7 @@ If the Receiver must connect to a Transmitter that uses a non-standard or selfâ€
             value: /var/antenna/config/keys/ca-bundle.pem
     ```
 
-## Creating Receiver ConfigMaps and Secrets
+### Creating Receiver ConfigMaps and Secrets
 
 1. **Create ConfigMap for YAML configuration files**
 
@@ -143,7 +143,7 @@ If the Receiver must connect to a Transmitter that uses a non-standard or selfâ€
             --from-file=configs/keys
     ```
 
-## Deploying Receiver to Kubernetes
+### Deploying Receiver to Kubernetes
 
 > ðŸ“˜ **Scaling Receiver Pods**
 >
@@ -164,7 +164,7 @@ If the Receiver must connect to a Transmitter that uses a non-standard or selfâ€
     $ kubectl apply -f receiver-service.yaml
     ```
 
-## Verifying Receiver Deployment
+### Verifying Receiver Deployment
 
 1. **Verify the pod is running**
 
@@ -204,9 +204,9 @@ If the Receiver must connect to a Transmitter that uses a non-standard or selfâ€
     $ kubectl exec <receiver-pod-name> -- bash -c 'timeout 2 bash -c "</dev/tcp/antenna-kafka/9092" && echo "Kafka is reachable" || echo "Cannot connect to Kafka"'
     ```
 
-## Troubleshooting
+### Troubleshooting
 
-### Receiver Pod Not Starting
+#### Receiver Pod Not Starting
 
 **Symptoms**: Receiver pod remains in `Pending`, `CrashLoopBackOff`, or `Error` state.
 
@@ -229,7 +229,7 @@ If the Receiver must connect to a Transmitter that uses a non-standard or selfâ€
    $ kubectl get pods -l app=antenna-kafka
    ```
 
-### Action Handler Errors
+#### Action Handler Errors
 
 **Symptoms**: Events are received successfully but action processing fails.
 
@@ -247,7 +247,7 @@ If the Receiver must connect to a Transmitter that uses a non-standard or selfâ€
 
 3. Validate action handler syntax locally before deploying to the cluster.
 
-### Certificate Errors
+#### Certificate Errors
 
 **Symptoms**: SSL/TLS handshake failures or certificate validation errors.
 
@@ -275,7 +275,7 @@ If the Receiver must connect to a Transmitter that uses a non-standard or selfâ€
 
 5. Regenerate certificates if they are expired or contain incorrect information.
 
-### General Troubleshooting Commands
+#### General Troubleshooting Commands
 
 ```bash
 # View all resources

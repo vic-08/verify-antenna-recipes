@@ -91,11 +91,11 @@ antenna-transmitter/
 └── transmitter-statefulset.yaml
 ```
 
-## Generating Transmitter Keys and Certificates
+### Generating Transmitter Keys and Certificates
 
 Generate SSL/TLS keys and certificates for secure communication using OpenSSL.
 
-### 1. Generate Server Certificate
+#### 1. Generate Server Certificate
 
 ```bash
 $ openssl req -x509 -newkey rsa:4096 -keyout configs/keys/server.key \
@@ -106,7 +106,7 @@ $ openssl req -x509 -newkey rsa:4096 -keyout configs/keys/server.key \
 
 Replace `<hostname>` with your actual hostname, or use `antenna-transmitter` for internal cluster communication.
 
-### 2. Generate JWT Signing Key Pair
+#### 2. Generate JWT Signing Key Pair
 
 Generate a key pair for signing security event tokens:
 
@@ -116,13 +116,13 @@ $ openssl req -x509 -newkey rsa:4096 -keyout configs/keys/jwtsigner.key \
     -out configs/keys/jwtsigner.pem -days 365 -nodes
 ```
 
-## Creating Transformation Handlers
+### Creating Transformation Handlers
 
 Transformation handlers process incoming raw events and convert them into SSF-standardized format. Sample handlers are provided in the `configs/js` directory, including an example that transforms device events from mobile device management systems (such as IBM MaaS360) into SSF CAEP (Continuous Access Evaluation Profile) events for device compliance changes.
 
 Add custom transformation handler files to this directory as required for your use case.
 
-## Configuring Authorization Scheme
+### Configuring Authorization Scheme
 
 The authorization scheme in `transmitter.yml` must be configured with valid credentials. These instructions use IBM Verify as the authorization server.
 
@@ -140,7 +140,7 @@ The authorization scheme in `transmitter.yml` must be configured with valid cred
 >
 > Receivers require either a long-lived access token or OAuth client credentials (created as an API client in IBM Verify).
 
-## Creating Transmitter ConfigMaps and Secrets
+### Creating Transmitter ConfigMaps and Secrets
 
 Create ConfigMaps and Secrets using files from the `configs` directory. Resource names must match exactly as they are referenced in the Kubernetes deployment manifests.
 
@@ -166,7 +166,7 @@ Create ConfigMaps and Secrets using files from the `configs` directory. Resource
             --from-file=configs/keys
     ```
 
-## Deploying Transmitter to Kubernetes
+### Deploying Transmitter to Kubernetes
 
 > 📘 **Scaling Transmitter Pods**
 >
@@ -187,7 +187,7 @@ Create ConfigMaps and Secrets using files from the `configs` directory. Resource
     $ kubectl apply -f transmitter-service.yaml
     ```
 
-## Verifying Transmitter Deployment
+### Verifying Transmitter Deployment
 
 1. **Verify the pod is running**
 
@@ -227,9 +227,9 @@ Create ConfigMaps and Secrets using files from the `configs` directory. Resource
     $ kubectl exec antenna-transmitter-0 -- bash -c 'timeout 2 bash -c "</dev/tcp/antenna-kafka/9092" && echo "Kafka is reachable" || echo "Cannot connect to Kafka"'
     ```
 
-## Troubleshooting
+### Troubleshooting
 
-### Transmitter Pod Not Starting
+#### Transmitter Pod Not Starting
 
 **Symptoms**: Transmitter pod remains in `Pending`, `CrashLoopBackOff`, or `Error` state.
 
@@ -257,7 +257,7 @@ Create ConfigMaps and Secrets using files from the `configs` directory. Resource
    $ kubectl get pvc transmitter-db-antenna-transmitter-0
    ```
 
-### Cannot Connect to PostgreSQL
+#### Cannot Connect to PostgreSQL
 
 **Symptoms**: Transmitter logs show database connection errors.
 
@@ -283,7 +283,7 @@ Create ConfigMaps and Secrets using files from the `configs` directory. Resource
    $ kubectl get secret antenna-postgres-secret -o yaml
    ```
 
-### Cannot Connect to Kafka
+#### Cannot Connect to Kafka
 
 **Symptoms**: Transmitter logs show Kafka connection or authentication errors.
 
@@ -311,7 +311,7 @@ Create ConfigMaps and Secrets using files from the `configs` directory. Resource
        --command-config /etc/kafka/clients/client.properties --list
    ```
 
-### Transformation Handler Errors
+#### Transformation Handler Errors
 
 **Symptoms**: Events are ingested successfully but transformation processing fails.
 
@@ -331,7 +331,7 @@ Create ConfigMaps and Secrets using files from the `configs` directory. Resource
 
 4. Check for memory or CPU resource constraints that may impact complex handler execution.
 
-### Authorization and Authentication Issues
+#### Authorization and Authentication Issues
 
 **Symptoms**: OAuth token validation errors or authorization failures in logs.
 
@@ -351,7 +351,7 @@ Create ConfigMaps and Secrets using files from the `configs` directory. Resource
 
 3. Verify the API client has the correct permissions configured in IBM Verify.
 
-### Certificate Errors
+#### Certificate Errors
 
 **Symptoms**: SSL/TLS handshake failures or certificate validation errors.
 
@@ -370,7 +370,7 @@ Create ConfigMaps and Secrets using files from the `configs` directory. Resource
 
 3. Regenerate certificates if they are expired or contain incorrect information.
 
-### General Troubleshooting Commands
+#### General Troubleshooting Commands
 
 ```bash
 # View all resources
