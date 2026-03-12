@@ -38,10 +38,6 @@ The datastore includes PostgreSQL database and Kafka message broker servers requ
 
 ### Setting Up the Local Directory
 
-> 📘 **Note**
->
-> Skip this section if you already cloned the GitHub repository.
-
 If you did not clone the repository, copy the entire `deploying/datastore/container-runtime` directory to your local system. All subsequent commands must be executed from this directory.
 
 **Expected Directory Structure:**

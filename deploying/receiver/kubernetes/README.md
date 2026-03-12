@@ -49,10 +49,6 @@ The IBM Verify Antenna Receiver receives and processes security events from tran
 
 ### Setting Up the Local Directory
 
-> 📘 **Note**
->
-> Skip this section if you already cloned the GitHub repository.
-
 Create a directory structure that matches the receiver layout:
 
 1. Create a directory named `antenna-receiver` and copy the `deploying/receiver/container-runtime/configs` folder into it. All subsequent commands must be executed from the `antenna-receiver` directory.

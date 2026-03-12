@@ -44,10 +44,6 @@ The IBM Verify Antenna Transmitter ingests raw security events, transforms them 
 
 ### Setting Up the Local Directory
 
-> 📘 **Note**
->
-> Skip this section if you already cloned the GitHub repository.
-
 If you did not clone the repository, copy the entire `deploying/transmitter/container-runtime` directory to your local system. All commands from this point onwards will be executed from this directory.
 
 **Expected Directory Structure:**

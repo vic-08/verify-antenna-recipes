@@ -64,10 +64,6 @@ The IBM Verify Antenna Transmitter ingests raw security events, transforms them 
 
 ### Setting Up the Local Directory
 
-> 📘 **Note**
->
-> Skip this section if you already cloned the GitHub repository.
-
 Create a directory structure that matches the transmitter layout:
 
 1. Create a directory named `antenna-transmitter` and copy the `deploying/transmitter/container-runtime/configs` folder into it. All subsequent commands must be executed from the `antenna-transmitter` directory.
