@@ -9,6 +9,8 @@ This guide provides step-by-step instructions for deploying an IBM Verify Antenn
 - [Configuration](#configuration)
   - [Setting Up the Local Directory](#setting-up-the-local-directory)
   - [Generating Keys and Certificates](#generating-keys-and-certificates)
+    - [1. Generate Server Certificate](#1-generate-server-certificate)
+    - [2. Generate JWT Signing Key Pair](#2-generate-jwt-signing-key-pair)
   - [Creating Transformation Handlers](#creating-transformation-handlers)
   - [Configuring Authorization Scheme](#configuring-authorization-scheme)
   - [Copying Datastore Certificates and Secrets](#copying-datastore-certificates-and-secrets)
