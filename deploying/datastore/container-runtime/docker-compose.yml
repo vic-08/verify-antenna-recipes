@@ -1,0 +1,85 @@
+services:
+  antenna-postgres:
+    image: postgres:17-alpine
+    hostname: antenna-postgres
+    container_name: antenna-postgres
+    networks:
+      - antenna-network
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      - ./configs/pg_hba.conf:/var/pg/configs/pg_hba.conf:ro
+      - ./configs/init_pg_schema.sql:/docker-entrypoint-initdb.d/init_pg_schema.sql:ro
+      - ./configs/keys:/var/pg/cert:ro
+    env_file: "./.env"
+    environment:
+      - PGDATA=/var/lib/postgresql/pgdata
+      - POSTGRES_DB=antenna
+    command:
+      - postgres
+      - -c
+      - hba_file=/var/pg/configs/pg_hba.conf
+      - -c
+      - ssl=on
+      - -c
+      - ssl_key_file=/var/pg/cert/postgres.key
+      - -c
+      - ssl_cert_file=/var/pg/cert/postgres.pem
+      - -c
+      - ssl_ca_file=/var/pg/cert/ca.pem
+      - -c
+      - ssl_min_protocol_version=TLSv1.2
+    restart: unless-stopped
+
+  antenna-kafka:
+    image: confluentinc/cp-kafka:8.1.1
+    hostname: antenna-kafka
+    container_name: antenna-kafka
+    networks:
+      - antenna-network
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+      - ./configs/keys:/etc/kafka/secrets:ro
+      - ./configs/secrets:/etc/kafka/clients:ro
+    env_file: "./.env"
+    environment:
+      - CLUSTER_ID=${CLUSTER_ID}
+      - KAFKA_BROKER_ID=0
+      - KAFKA_NODE_ID=0
+      - KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CONTROLLER_QUORUM_VOTERS=0@antenna-kafka:9093
+      - KAFKA_INTER_BROKER_LISTENER_NAME=BROKER
+      - KAFKA_LISTENERS=BROKER://:9092,CONTROLLER://:9093
+      - KAFKA_ADVERTISED_LISTENERS=BROKER://antenna-kafka:9092
+      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=BROKER:SASL_SSL,CONTROLLER:SASL_PLAINTEXT
+      - KAFKA_LISTENER_NAME_BROKER_PLAIN_SASL_JAAS_CONFIG=org.apache.kafka.common.security.plain.PlainLoginModule required username="admin" password="admin-secret" user_${KAFKA_CLIENT_USERS}="${KAFKA_CLIENT_PASSWORDS}" ;
+      - KAFKA_LISTENER_NAME_CONTROLLER_PLAIN_SASL_JAAS_CONFIG=org.apache.kafka.common.security.plain.PlainLoginModule required username="${KAFKA_CONTROLLER_USER}" password="${KAFKA_CONTROLLER_PASSWORD}" user_${KAFKA_CONTROLLER_USER}="${KAFKA_CONTROLLER_PASSWORD}" ;
+      - KAFKA_LOG4J_LOGGERS=kafka=WARN,kafka.controller=WARN,kafka.log.LogCleaner=WARN,state.change.logger=WARN,kafka.producer.async.DefaultEventHandler=WARN
+      - KAFKA_LOG4J_ROOT_LOGLEVEL=WARN
+      - KAFKA_LOG4J_TOOLS_LOGLEVEL=ERROR
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+      - KAFKA_OPTS=-Djava.security.debug=gssloginconfig,configfile,configparser,logincontext
+      - KAFKA_PROCESS_ROLES=broker,controller
+      - KAFKA_SASL_ENABLED_MECHANISMS=PLAIN
+      - KAFKA_SASL_MECHANISM_CONTROLLER_PROTOCOL=PLAIN
+      - KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL=PLAIN
+      - KAFKA_SSL_KEYSTORE_TYPE=PEM
+      - KAFKA_SSL_KEYSTORE_LOCATION=/etc/kafka/secrets/keystore.pem
+      - KAFKA_SSL_TRUSTSTORE_TYPE=PEM
+      - KAFKA_SSL_TRUSTSTORE_LOCATION=/etc/kafka/secrets/truststore.pem
+    restart: unless-stopped
+    depends_on:
+      - antenna-postgres
+
+volumes:
+  postgres-data:
+  kafka-data:
+
+networks:
+  antenna-network:
+    name: antenna-network
+    driver: bridge

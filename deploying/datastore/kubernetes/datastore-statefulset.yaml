@@ -1,0 +1,160 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: antenna-postgres
+  labels:
+    app: antenna-postgres
+spec:
+  replicas: 1
+  serviceName: antenna-postgres
+  selector:
+    matchLabels:
+      app: antenna-postgres
+  template:
+    metadata:
+      labels:
+        app: antenna-postgres
+    spec:
+      hostname: antenna-postgres
+      containers:
+        - name: antenna-postgres
+          image: postgres:17-alpine
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: pgsql-data
+              mountPath: /var/lib/postgresql
+              readOnly: false
+            - name: pgsql-config
+              readOnly: true
+              mountPath: /var/pg/configs/pg_hba.conf
+              subPath: pg_hba.conf
+            - name: pgsql-config
+              readOnly: true
+              mountPath: /docker-entrypoint-initdb.d/init_pg_schema.sql
+              subPath: init_pg_schema.sql
+            - name: pgsql-cert
+              mountPath: /var/pg/cert
+          env:
+            - name: PGDATA
+              value: /var/lib/postgresql/pgdata
+          envFrom:
+            - configMapRef:
+                name: antenna-postgres-env
+            - secretRef:
+                name: antenna-postgres-secret
+          args:
+            - '-c'
+            - hba_file=/var/pg/configs/pg_hba.conf
+            - '-c'
+            - ssl=on
+            - '-c'
+            - ssl_key_file=/var/pg/cert/tls.key
+            - '-c'
+            - ssl_cert_file=/var/pg/cert/tls.pem
+            - '-c'
+            - ssl_ca_file=/var/pg/cert/ca.pem
+            - '-c'
+            - ssl_min_protocol_version=TLSv1.2
+      volumes:
+        - name: pgsql-config
+          configMap:
+            name: antenna-postgres-config
+        - name: pgsql-cert
+          secret:
+            secretName: antenna-postgres-cert
+            defaultMode: 288
+  volumeClaimTemplates:
+    - metadata:
+        name: pgsql-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 5Gi
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: antenna-kafka
+  labels:
+    app: antenna-kafka
+spec:
+  replicas: 1
+  serviceName: antenna-kafka
+  selector:
+    matchLabels:
+      app: antenna-kafka
+  template:
+    metadata:
+      labels:
+        app: antenna-kafka
+    spec:
+      hostname: antenna-kafka
+      containers:
+        - name: antenna-kafka
+          image: confluentinc/cp-kafka:8.1.1
+          imagePullPolicy: Always
+          ports:
+            - name: kafka-broker
+              containerPort: 9092
+              protocol: TCP
+            - name: kafka-ctrler
+              containerPort: 9093
+              protocol: TCP
+          volumeMounts:
+            - name: kafka-data
+              mountPath: /var/lib/kafka/data
+              subPath: data
+              readOnly: false
+            - name: kafka-config
+              mountPath: /app/bin/kafka_entrypoint.sh
+              subPath: kafka_entrypoint.sh
+              readOnly: true
+            - name: kafka-cert
+              mountPath: /etc/kafka/secrets
+            - name: kafka-client-conf
+              mountPath: /etc/kafka/clients
+          env:
+            - name: KAFKA_SSL_KEYSTORE_TYPE
+              value: PEM
+            - name: KAFKA_SSL_KEYSTORE_LOCATION
+              value: /etc/kafka/secrets/keystore.pem
+            - name: KAFKA_SSL_TRUSTSTORE_TYPE
+              value: PEM
+            - name: KAFKA_SSL_TRUSTSTORE_LOCATION
+              value: /etc/kafka/secrets/truststore.pem
+          envFrom:
+            - configMapRef:
+                name: antenna-kafka-env
+            - secretRef:
+                name: antenna-kafka-secret
+          command:
+            - /bin/sh
+          args:
+            - /app/bin/kafka_entrypoint.sh
+      volumes:
+        - name: kafka-config
+          configMap:
+            name: antenna-kafka-config
+            defaultMode: 420
+        - name: kafka-cert
+          secret:
+            secretName: antenna-kafka-cert
+            defaultMode: 420
+        - name: kafka-client-conf
+          secret:
+            secretName: antenna-kafka-client-config
+            defaultMode: 420
+  volumeClaimTemplates:
+    - metadata:
+        name: kafka-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 5Gi

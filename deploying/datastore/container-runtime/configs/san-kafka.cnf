@@ -1,0 +1,11 @@
+[req]
+distinguished_name = req_distinguished_name
+req_extensions = v3_req
+prompt = no
+[v3_req]
+keyUsage = critical, nonRepudiation, digitalSignature, keyAgreement, keyEncipherment, dataEncipherment
+extendedKeyUsage = critical, serverAuth
+subjectAltName = @alt_names
+[alt_names]
+DNS.1 = antenna-kafka
+DNS.2 = antenna-kafka-0.antenna-kafka

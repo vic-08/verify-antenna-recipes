@@ -1,152 +1,338 @@
 # IBM Verify Antenna Transmitter on a Container Runtime
 
-IBM Verify Antenna is available as a container image on the [IBM Verify Registry](icr.io/ibm-verify/ibm-verify-antenna:25.05.0).
+This guide provides step-by-step instructions for deploying an IBM Verify Antenna Transmitter on a container runtime like Docker or Podman.
 
-This document guides you through running an IBM Verify Antenna Transmitter on a container runtime, which processes raw events pushed from a source and transforms it into events complying with the OpenID Shared Signals Framework (SSF).
+## Table of Contents
 
-## Background
+- [Overview](#overview)
+- [Prerequisites](#prerequisites)
+- [Configuration](#configuration)
+  - [Setting Up the Local Directory](#setting-up-the-local-directory)
+  - [Generating Keys and Certificates](#generating-keys-and-certificates)
+    - [1. Generate Server Certificate](#1-generate-server-certificate)
+    - [2. Generate JWT Signing Key Pair](#2-generate-jwt-signing-key-pair)
+  - [Creating Transformation Handlers](#creating-transformation-handlers)
+  - [Configuring Authorization Scheme](#configuring-authorization-scheme)
+  - [Copying Datastore Certificates and Secrets](#copying-datastore-certificates-and-secrets)
+  - [Setting Up Environment Variables](#setting-up-environment-variables)
+- [Running the Transmitter](#running-the-transmitter)
+- [Verifying Transmitter Deployment](#verifying-transmitter-deployment)
+- [Troubleshooting](#troubleshooting)
+  - [Transmitter Container Not Starting](#transmitter-container-not-starting)
+  - [Cannot Connect to PostgreSQL](#cannot-connect-to-postgresql)
+  - [Cannot Connect to Kafka](#cannot-connect-to-kafka)
+  - [Transformation Handler Errors](#transformation-handler-errors)
+  - [Authorization and Authentication Issues](#authorization-and-authentication-issues)
+  - [Certificate Errors](#certificate-errors)
+  - [General Troubleshooting Commands](#general-troubleshooting-commands)
 
-The IBM Verify Antenna Transmitter is designed to ingest raw security events, transform them into SSF-compliant events and transmit them to SSF receivers. Given transformation logic is written in JavaScript, the transformation handlers can be as simple or as complex as needed.
+## Overview
 
-> 📘 Note
-> 
-> The transformation handlers determine the resource requirements to run Antenna. A very complex handler can impact the processing rate.
-> Simple object-to-object mapping is a common approach. Augmenting events by calling out to external sources is discouraged.
+The IBM Verify Antenna Transmitter ingests raw security events, transforms them into SSF-compliant format, and transmits them to registered SSF receivers.
+
+> 📘 **Performance Note**
+>
+> Transformation handler complexity directly impacts resource requirements and processing throughput. Use simple object-to-object mapping whenever possible. Avoid augmenting events with data from external API calls, as this significantly reduces performance.
 
 ## Prerequisites
 
 - A container runtime like Docker or Podman installed
-- An IBM Verify tenant: You can sign up for a free trial at [ibm.biz/verify-trial](https://ibm.biz/verify-trial). This will be referenced in this document and in configuration files as `tenant.verify.ibm.com`.
+- **openssl**: For generating SSL/TLS certificates
+- **IBM Verify tenant**: Sign up for a free trial at [ibm.biz/verify-trial](https://ibm.biz/verify-trial). Note your tenant hostname (e.g., `tenant.verify.ibm.com`). You will reference this hostname in configuration files.
 
 ## Configuration
 
-### Setting up the local directory
+### Setting Up the Local Directory
 
-> 📘 Note
-> 
-> You will need to perform these steps only if you choose not to clone this Github repository to your local system.
+If you did not clone the repository, copy the entire `deploying/transmitter/container-runtime` directory to your local system. All commands from this point onwards will be executed from this directory.
 
-You will build a directory structure that matches [configs](configs).
+**Expected Directory Structure:**
 
-Create a directory in your system called `antenna-transmitter` and copy the contents of the [configs](configs) directory into it. All commands from this point onwards will be executed from the `antenna-transmitter` directory.
-
-### Generate keys and certificates
-
-The first step is to generate SSL keys and certificates for secure communication. You can use OpenSSL to generate the keys and certificates.
-
-Here's an example of how to generate a self-signed certificate using OpenSSL:
-
-```bash
-$ openssl req -x509 \
-        -newkey rsa:4096 \
-        -keyout configs/keys/server.key \
-        -out configs/keys/server.pem \
-        -days 365 \
-        -nodes \
-        -addext "subjectAltName = DNS:<hostname>"
+```
+container-runtime/
+├── configs/
+│   ├── js/
+│   │   └── (transformation handlers)
+│   ├── keys/
+│   │   └── (certificates will be generated here)
+│   ├── storage.yml
+│   └── transmitter.yml
+├── db/
+│   └── (SQLite database will be created here)
+├── docker-compose.yml
+└── dotenv
 ```
 
-This will generate a self-signed certificate with a validity of 365 days under the `keys` directory that are used to run the HTTPS server.
+### Generating Keys and Certificates
 
-You will also need a key-pair to sign the security event tokens. You can use OpenSSL to generate the key-pair as well.
-Here's an example of how to generate a key-pair using OpenSSL:
+Generate SSL/TLS keys and certificates for secure communication using OpenSSL.
+
+#### 1. Generate Server Certificate
 
 ```bash
-$ openssl req -x509 \
-        -newkey rsa:4096 \
-        -keyout configs/keys/jwtsigner.key \
-        -out configs/keys/jwtsigner.pem \
-        -days 365 \
-        -nodes
+$ openssl req -x509 -newkey rsa:4096 -keyout configs/keys/server.key \
+    -out configs/keys/server.pem -days 365 -nodes \
+    -subj "/C=US/ST=State/L=City/O=Organization/OU=Unit/CN=DNS:<hostname>" \
+    -addext "subjectAltName = DNS:<hostname>"
 ```
 
-### Create transformation handlers
+Replace `<hostname>` with your actual hostname, or use `antenna-transmitter` for internal communication.
 
-Transformation handlers process incoming raw events and transform them into the SSF standardized format. You can find the transformation handlers in the `configs/js` directory. There is an example handler provided that transforms a device event received from a mobile device management system (like IBM MaaS360) and converts it into a SSF CAEP event for device compliance changes.
+#### 2. Generate JWT Signing Key Pair
 
-You can add new files under this directory for additional transformation handlers.
+Generate a key pair for signing security event tokens:
 
-### Configure authorization scheme
+```bash
+$ openssl req -x509 -newkey rsa:4096 -keyout configs/keys/jwtsigner.key \
+    -subj "/C=US/ST=State/L=City/O=Organization/OU=Unit/CN=DNS:<hostname>" \
+    -out configs/keys/jwtsigner.pem -days 365 -nodes
+```
 
-The authorization scheme in [transmitter.yml](configs/transmitter.yml) needs to be populated with valid values. The instructions in this section is based on IBM Verify as the authorization server.
+### Creating Transformation Handlers
 
-1.  Create a new API client in IBM Verify using the instructions provided in the [IBM Verify documentation](https://www.ibm.com/docs/en/security-verify?topic=access-creating-api-clients). You do not need to choose any entitlements.
-    -  Note that the UI currently does not allow you to create an API client without entitlements. So, select any arbitrary entitlement. However, once you save it, edit the API client and remove the entitlement.
-2.  Populate the `configs/transmitter.yml` with the following values:
-    -  `authorization_schemes[].client_id`: The client ID of the API client created in step 1.
-    -  `authorization_schemes[].client_secret`: The client ID of the API client created in step 1.
-    -  `authorization_schemes[].discovery_uri`: Replace the hostname in the URL with the hostname of your IBM Verify tenant.
+Transformation handlers process incoming raw events and convert them into SSF-standardized format. Sample handlers are provided in the `configs/js` directory, including an example that transforms device events from mobile device management systems (such as IBM MaaS360) into SSF CAEP (Continuous Access Evaluation Profile) events for device compliance changes.
 
-> 📘 Note
-> 
-> Any receiver that needs to connect to this transmitter will need to generate an OAuth token generated 
-> by the same IBM Verify tenant.
-> 
-> This implies that any receiver would need to either be issued a long-lived access token or OAuth client credentials
-> (generated as an API client).
+Add custom transformation handler files to this directory as required for your use case.
 
-### Set up the rest
+### Configuring Authorization Scheme
 
-1. Copy [dotenv](./dotenv) to `.env` file.
-2. Modify the properties as needed.
-3. Ensure that the `HOSTNAME` value is synchronized in the `configs/transmitter.yml`.
-4. Copy the [docker-compose.yml](docker-compose.yml) to the `antenna-transmitter` directory.
-5. Create an empty directory for the database
+The authorization scheme in `transmitter.yml` must be configured with valid credentials. These instructions use IBM Verify as the authorization server.
+
+1. **Create a new API client in IBM Verify** by following the [IBM Verify documentation](https://www.ibm.com/docs/en/security-verify?topic=access-creating-api-clients). No entitlements are required.
+   - **Note**: The UI currently requires selecting an entitlement during creation. Select any entitlement, save the client, then edit the client and remove the entitlement.
+
+2. **Update `transmitter.yml` with the following values:**
+   - `authorization_schemes[].client_id`: Client ID from step 1
+   - `authorization_schemes[].client_secret`: Client secret from step 1
+   - `authorization_schemes[].discovery_uri`: Update the hostname with your IBM Verify tenant hostname
+
+> 📘 **Authentication Requirements**
+>
+> Receivers connecting to this transmitter must obtain OAuth tokens from the same IBM Verify tenant.
+>
+> Receivers require either a long-lived access token or OAuth client credentials (created as an API client in IBM Verify).
+
+### Copying Datastore Certificates and Secrets
+
+The transmitter needs access to the datastore certificates and credentials created during datastore deployment.
+
+> 📘 **Prerequisites**
+>
+> - The datastore must be fully deployed and configured first (see [Datastore Deployment Guide](../../datastore/container-runtime/README.md))
+> - The datastore `.env` file must exist (created from `dotenv` template during datastore setup)
+> - The following commands assume the datastore is in `../../datastore/container-runtime/` relative to the current directory
+
+1. Copy the CA certificates from the datastore deployment:
+
+    ```bash
+    $ cp ../../datastore/container-runtime/configs/keys/ca.pem configs/keys/pgsql_ca.pem
+    $ cp ../../datastore/container-runtime/configs/keys/ca.pem configs/keys/kafka_ca.pem
+    ```
+
+2. Create the secrets directory and copy credentials from the datastore `.env` file:
+
+    ```bash
+    $ mkdir -p configs/secrets
+    
+    # Verify the datastore .env file exists
+    $ test -f ../../datastore/container-runtime/.env || { echo "Error: Datastore .env file not found. Deploy datastore first."; exit 1; }
+    
+    # Source the datastore environment and create secret files
+    $ source ../../datastore/container-runtime/.env
+    $ echo -n "${POSTGRES_USER}" > configs/secrets/pgsql_user
+    $ echo -n "${POSTGRES_PASSWORD}" > configs/secrets/pgsql_password
+    $ echo -n "${KAFKA_CLIENT_USERS}" > configs/secrets/kafka_user
+    $ echo -n "${KAFKA_CLIENT_PASSWORDS}" > configs/secrets/kafka_password
+    ```
+
+    If the datastore is in a different location, adjust the paths accordingly.
+
+### Setting Up Environment Variables
+
+1. Copy [dotenv](./dotenv) to `.env` file:
+
+    ```bash
+    $ cp dotenv .env
+    ```
+
+2. Modify the properties in `.env` file as needed:
+   - `HOSTNAME`: The hostname for the transmitter (must match the value in `transmitter.yml`)
+   - `TRANSMITTER_PORT`: The port to expose the transmitter on (default: 9044)
+
+3. Create an empty directory for the database:
 
     ```bash
     $ mkdir -p db
     ```
 
-### Final Directory Structure
+## Running the Transmitter
 
-```
-antenna-transmitter/
-├── configs/
-│   ├── js/
-│   │   ├── mdm_mapper.js
-│   │   ├── ssf_mapper.js
-│   ├── keys/
-│   │   ├── jwtsigner.key
-│   │   ├── jwtsigner.pem
-│   │   ├── server.key
-│   │   └── server.pem
-│   ├── processor.yml
-│   ├── transmitter.yml
-│   └── storage.yml
-├── db/
-│   └── ssf.db
-|── .env
-└── docker-compose.yml
-```
+1. Ensure all certificates and configuration files are in place.
 
-## Running the transmitter
+2. Ensure the datastore is running and the `antenna-network` Docker network exists. If the datastore is not yet deployed, follow the [Datastore Deployment Guide](../datastore/container-runtime/README.md) first.
 
-1. Create the `db` directory, if it doesn't exist.
-
-2. Start the transmitter with Docker Compose or equivalent:
+3. Start the transmitter with Docker Compose:
 
    ```bash
    $ docker-compose up -d
    ```
 
-3. Open a browser and verify that you are able to connect to https://{HOSTNAME}:9044/.well-known/ssf-configuration
+   The transmitter will be available on the port specified in the `.env` file via HTTPS. It will connect to PostgreSQL and Kafka using the hostnames `antenna-postgres` and `antenna-kafka` on the shared `antenna-network`.
 
-4. Create a `scripts` directory and copy [test_device_event.sh](../scripts/test_device_event.sh) to it.
+## Verifying Transmitter Deployment
 
-5. Verify that the transmitter is able to accept events by running the script.
+1. **Verify the container is running:**
 
     ```bash
-    $ ./scripts/test_device_event.sh
+    $ docker-compose ps antenna-transmitter
     ```
 
-    Verify that you see the log indicating the event is received on the transmitter. It will appear as below.
+    Expected output:
+    ```
+    NAME                   IMAGE                                                 STATUS
+    antenna-transmitter    icr.io/ibm-verify/ibm-verify-antenna-transmitter:...  Up
+    ```
+
+2. **Check container logs for errors:**
 
     ```bash
-    transmitter.dune.com  | time="2025-10-03T10:41:39Z" level=info msg="[trace] Raw event received: {\"deviceInfo\":
+    $ docker-compose logs antenna-transmitter
+    ```
+
+3. **Test connectivity** by opening a web browser and navigating to `https://localhost:<PORT>/.well-known/ssf-configuration` (replace `<PORT>` with your configured port).
+
+4. **Test event ingestion** by copying [test_device_event.sh](../scripts/test_device_event.sh) and running it:
+
+    ```bash
+    $ ../scripts/test_device_event.sh
+    ```
+
+    Verify the log shows the event was received:
+    ```
+    antenna-transmitter | time="..." level=info msg="[trace] Raw event received: {\"deviceInfo\":..."
     ```
 
 ## Troubleshooting
 
-- Check logs with `docker-compose logs`
-- Verify SSL certificate configuration
-- Verify network connectivity
+### Transmitter Container Not Starting
+
+**Symptoms**: Transmitter container exits immediately or shows errors in logs.
+
+**Solutions**:
+
+1. Check container logs:
+   ```bash
+   $ docker-compose logs antenna-transmitter
+   ```
+
+2. Verify certificate files exist and have correct permissions:
+   ```bash
+   $ ls -la configs/keys/
+   ```
+
+3. Ensure the `.env` file has valid configuration.
+
+4. Verify the `db` directory exists and is writable.
+
+5. Verify the datastore (PostgreSQL and Kafka) is running if using external datastore.
+
+### Cannot Connect to PostgreSQL
+
+**Symptoms**: Transmitter logs show database connection errors.
+
+**Solutions**:
+
+1. Verify PostgreSQL is accessible from the transmitter container.
+
+2. Check PostgreSQL credentials in `storage.yml`.
+
+3. Verify PostgreSQL SSL certificates are properly configured.
+
+### Cannot Connect to Kafka
+
+**Symptoms**: Transmitter logs show Kafka connection or authentication errors.
+
+**Solutions**:
+
+1. Verify Kafka is accessible from the transmitter container.
+
+2. Check Kafka credentials in `storage.yml`.
+
+3. Verify Kafka SSL certificates are properly configured.
+
+4. Ensure required Kafka topics exist.
+
+### Transformation Handler Errors
+
+**Symptoms**: Events are ingested successfully but transformation processing fails.
+
+**Solutions**:
+
+1. Check transmitter logs for JavaScript errors:
+   ```bash
+   $ docker-compose logs antenna-transmitter | grep -i error
+   ```
+
+2. Verify transformation handler files exist:
+   ```bash
+   $ ls -la configs/js/
+   ```
+
+3. Validate transformation handler syntax locally before deploying.
+
+4. Check for memory or CPU resource constraints that may impact complex handler execution.
+
+### Authorization and Authentication Issues
+
+**Symptoms**: OAuth token validation errors or authorization failures in logs.
+
+**Solutions**:
+
+1. Verify the IBM Verify tenant configuration in `transmitter.yml`.
+
+2. Test OAuth token generation manually:
+   ```bash
+   $ curl -X POST https://tenant.verify.ibm.com/v1.0/endpoint/default/token \
+       -H "Content-Type: application/x-www-form-urlencoded" \
+       -d "grant_type=client_credentials&client_id=<client_id>&client_secret=<client_secret>"
+   ```
+
+3. Verify the API client has the correct permissions configured in IBM Verify.
+
+### Certificate Errors
+
+**Symptoms**: SSL/TLS handshake failures or certificate validation errors.
+
+**Solutions**:
+
+1. Verify certificate validity and expiration:
+   ```bash
+   $ openssl x509 -in configs/keys/server.pem -text -noout
+   $ openssl x509 -in configs/keys/jwtsigner.pem -text -noout
+   ```
+
+2. Verify Subject Alternative Names (SAN) are correct:
+   ```bash
+   $ openssl x509 -in configs/keys/server.pem -text -noout | grep -A1 "Subject Alternative Name"
+   ```
+
+3. Regenerate certificates if they are expired or contain incorrect information.
+
+### General Troubleshooting Commands
+
+```bash
+# View all containers
+$ docker-compose ps
+
+# Check container logs
+$ docker-compose logs <service-name> --tail=100 -f
+
+# Restart a specific service
+$ docker-compose restart <service-name>
+
+# Stop all services
+$ docker-compose down
+
+# Remove volumes (WARNING: This will delete all data)
+$ docker-compose down -v
+```

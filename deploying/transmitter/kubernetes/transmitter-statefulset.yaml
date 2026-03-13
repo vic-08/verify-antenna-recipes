@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: antenna-transmitter
+  labels:
+    app: antenna-transmitter
+spec:
+  replicas: 1
+  serviceName: antenna-transmitter
+  selector:
+    matchLabels:
+      app: antenna-transmitter
+  template:
+    metadata:
+      labels:
+        app: antenna-transmitter
+    spec:
+      hostname: antenna-transmitter
+      containers:
+        - name: antenna-transmitter
+          image: icr.io/ibm-verify/ibm-verify-antenna-transmitter:26.03.0
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 9044
+          volumeMounts:
+            - name: transmitter-db
+              mountPath: /db
+            - name: all-configs
+              mountPath: /var/antenna/config
+      volumes:
+        - name: all-configs
+          projected:
+            sources:
+              - configMap:
+                  name: transmitter-config
+              - configMap:
+                  name: transmitter-transform-handlers
+                  items:
+                    - key: mdm_mapper.js
+                      path: js/mdm_mapper.js
+                    - key: ssf_mapper.js
+                      path: js/ssf_mapper.js
+              - secret:
+                  name: transmitter-keys
+                  items:
+                    - key: jwtsigner.key
+                      path: keys/jwtsigner.key
+                    - key: jwtsigner.pem
+                      path: keys/jwtsigner.pem
+                    - key: server.key
+                      path: keys/server.key
+                    - key: server.pem
+                      path: keys/server.pem
+              - secret:
+                  name: antenna-postgres-cert
+                  items:
+                    - key: ca.pem
+                      path: keys/pgsql_ca.pem
+              - secret:
+                  name: antenna-postgres-secret
+                  items:
+                    - key: POSTGRES_USER
+                      path: secrets/pgsql_user
+                    - key: POSTGRES_PASSWORD
+                      path: secrets/pgsql_password
+              - secret:
+                  name: antenna-kafka-cert
+                  items:
+                    - key: ca.pem
+                      path: keys/kafka_ca.pem
+              - secret:
+                  name: antenna-kafka-secret
+                  items:
+                    - key: KAFKA_CLIENT_USERS
+                      path: secrets/kafka_user
+                    - key: KAFKA_CLIENT_PASSWORDS
+                      path: secrets/kafka_password
+
+  volumeClaimTemplates:
+    - metadata:
+        name: transmitter-db
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi

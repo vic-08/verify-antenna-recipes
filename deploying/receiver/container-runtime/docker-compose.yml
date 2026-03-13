@@ -1,11 +1,17 @@
 services:
   antenna-receiver:
-    image: "icr.io/ibm-verify/ibm-verify-antenna:25.05.0"
+    image: "icr.io/ibm-verify/ibm-verify-antenna-receiver:26.03.0"
     hostname: ${HOSTNAME}
     container_name: ${HOSTNAME}
+    networks:
+      - antenna-network
     ports:
       - ${PORT}:9043
     volumes:
-      - ./configs:/configs
-      - ./db:/db
+      - ./configs:/var/antenna/config
     env_file: "./.env"
+
+networks:
+  antenna-network:
+    name: antenna-network
+    external: true

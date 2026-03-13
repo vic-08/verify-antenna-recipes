@@ -30,7 +30,7 @@ You can deploy the VIP transmitter using one of the following methods:
 
 ### Option 1: Container Runtime
 
-Follow the instructions in [Container Runtime Deployment](../../deploying/transmitter/container-runtime/README.md) with the following VIP-specific modifications:
+Follow the instructions in [Container Runtime Deployment](../../../deploying/transmitter/container-runtime/README.md) with the following VIP-specific modifications:
 
 1. Use the [vip_event_mapper.js](configs/js/vip_event_mapper.js) transformation handler in the `configs/js` directory
 
@@ -42,30 +42,25 @@ Follow the instructions in [Container Runtime Deployment](../../deploying/transm
         - "https://schemas.openid.net/secevent/risc/event-type/credential-compromise"
         ```
     
-    - Add the following source to `ingester.sources`
+    - Add the following source to `transmitter.ingester.sources`
 
         ```yaml
         - id: vip
           type: http_push
+          transform_rule:
+            type: javascript
+            content: "@js/vip_event_mapper.js"
         ```
-
-3. Modify the `processor.yml` to add the VIP transform rules in `processor.transform_rules`:
-
-    ```yaml
-    - source_id: vip
-      type: javascript
-      content: "@js/vip_event_mapper.js"
-    ```
 
 ### Option 2: Kubernetes
 
-Follow the instructions in [Kubernetes Deployment](../../deploying/transmitter/kubernetes/README.md) with the following VIP-specific modifications:
+Follow the instructions in [Kubernetes Deployment](../../../deploying/transmitter/kubernetes/README.md) with the following VIP-specific modifications:
 
 1. Perform the same steps as those listed in the previous section. These changes would then be used to generate Kubernetes artifacts.
 
 2. Continue the process of generating ConfigMaps with the updates.
 
-3. Modify the `transmitter-deployment.yaml` to add the additional transformation handler under the `all-configs` volume. Specifically, add the following to `sources[configMap.name="transmitter-transform-handlers"].items` :
+3. Modify the `transmitter-statefulset.yaml` to add the additional transformation handler under the `all-configs` volume. Specifically, add the following to `sources[configMap.name="transmitter-transform-handlers"].items` :
 
     ```yaml
     - key: vip_event_mapper.js

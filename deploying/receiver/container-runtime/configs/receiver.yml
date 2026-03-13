@@ -1,5 +1,5 @@
 ---
-version: 1.0.0
+version: 26.03
 logging:
   level: info
 
@@ -8,13 +8,36 @@ receiver:
     ssl: # SSL cert / key for HTTPS
       key: "ks:server/key"
       certificate: "ks:server/cert"
-      
-  # reduce duplicate operational logs
-  squash_redundant_logs_count: 10
-  # clean events periodically
-  cleaner_interval_in_secs: 60
-  # periodically cleans processed events from the store
-  pause_cleaner: false
-  event_states_to_clean:
-    - "actioned"
-    - "errored"
+  base_url: "https://receiver.dune.com:9043"
+
+  management:
+    enabled: true
+
+  runtime:
+    enabled: true
+
+    # The number of worker threads processing the received events.
+    worker_threads: 10
+
+    # clean events periodically
+    cleaner_interval_in_secs: 60
+    event_states_to_clean:
+      - "actioned"
+      - "errored"
+
+    action_rules:
+      - event_type: "https://schemas.openid.net/secevent/caep/event-type/session-revoked"
+        type: javascript
+        content: "@js/log_event.js"
+      - event_type: "https://schemas.openid.net/secevent/caep/event-type/device-compliance-change"
+        type: javascript
+        content: "@js/log_event.js"
+      - event_type: "https://iam.ibm.com/secevent/ssf/event-type/application"
+        type: javascript
+        content: "@js/log_event.js"
+
+# js engine configuration
+javascript:
+  timeout: 10
+  max_concurrent_jobs: 16
+  max_ctx_pre_isolate: 50

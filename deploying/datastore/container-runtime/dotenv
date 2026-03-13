@@ -1,0 +1,10 @@
+# PostgreSQL Configuration
+POSTGRES_USER=antenna_user
+POSTGRES_PASSWORD=change_me_postgres_password
+
+# Kafka Configuration
+CLUSTER_ID=change_me_cluster_id
+KAFKA_CLIENT_USERS=antenna_client
+KAFKA_CLIENT_PASSWORDS=change_me_kafka_client_password
+KAFKA_CONTROLLER_USER=kafka_controller
+KAFKA_CONTROLLER_PASSWORD=change_me_kafka_controller_password

@@ -1,5 +1,5 @@
 ---
-version: 1.0.0
+version: 26.03
 
 logging:
   level: info
@@ -9,29 +9,47 @@ transmitter:
     ssl:
       key: 'ks:server/key'
       certificate: 'ks:server/cert'
-  jwks:
-    signing_keystore: jwks_keys
   base_url: "https://transmitter.dune.com:9044"
   issuer: "https://transmitter.dune.com"
   event_types:
     - "https://schemas.openid.net/secevent/ssf/event-type/verification"
     - "https://schemas.openid.net/secevent/caep/event-type/session-revoked"
     - "https://schemas.openid.net/secevent/caep/event-type/device-compliance-change"
-  sign_poll_set: true
-  push_interval: 10s
-  minimum_push_checking_interval: 10s
+    - "https://iam.ibm.com/secevent/ssf/event-type/application"
 
-ingester:
-  server:
-    ssl:
-      key: 'ks:server/key'
-      certificate: 'ks:server/cert'
-  base_url: "https://transmitter.dune.com:9042"
-  sources:
-    - id: mdm
-      type: http_push
-    - id: ssf_compliant
-      type: http_push
+  runtime:
+    enabled: true
+    jwks:
+      signing_keystore: jwks_keys
+      default_signing_key: jwtsigner
+    sign_poll_set: true
+    max_ssf_event_worker: 10
+    max_set_push_worker: 15
+    wait_ssf_event_timeout: 5s
+    request_timeout: 20
+
+  ingester:
+    enabled: true
+
+    # The number of worker threads transforming the raw events to SSF events.
+    worker_threads: 10
+
+    sources:
+      - id: mdm
+        type: http_push
+        transform_rule:
+          type: javascript
+          content: "@js/mdm_mapper.js"
+      - id: ssf_compliant
+        type: http_push
+        transform_rule:
+          type: javascript
+          content: "@js/ssf_mapper.js"
+
+javascript:
+  timeout: 10
+  max_concurrent_jobs: 16
+  max_ctx_pre_isolate: 50
 
 authorization_schemes:
   - spec_urn: "urn:ietf:rfc:6749"
