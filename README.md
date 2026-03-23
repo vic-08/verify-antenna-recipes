@@ -20,7 +20,7 @@ Verify Antenna allows organizations to:
 
 ## Documentation
 
-For comprehensive documentation on IBM Verify Antenna, please visit the [official IBM documentation](https://www.ibm.com/docs/en/security-verify?topic=integrations-verify-antenna).
+For comprehensive documentation on IBM Verify Antenna, please visit the [official IBM documentation](https://www.ibm.com/docs/en/verify-antenna/26.03.0).
 
 ## Repository Structure
 
